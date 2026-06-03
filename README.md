@@ -10,6 +10,9 @@ plane (`ssh exe.dev …`). Nothing to install locally beyond `ssh`.
 - SSH key registered with exe.dev (run `ssh exe.dev` once).
 - A Claude Code OAuth token: `claude setup-token` on a machine with a browser +
   Claude subscription (the VM is headless).
+- Permission to create Slack apps in your workspace
+  ([api.slack.com/apps](https://api.slack.com/apps)). If you don't see
+  "Create New App", ask a workspace admin to allow it or create the app for you.
 
 ## Usage
 
