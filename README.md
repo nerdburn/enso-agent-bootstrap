@@ -12,17 +12,41 @@ plane (`ssh exe.dev …`). Nothing to install locally beyond `ssh`.
   Claude subscription (the VM is headless).
 
 ## Usage
-```bash
-cp agent.conf.example ace.conf && chmod 600 ace.conf   # edit AGENT_NAME, VM_NAME
 
-./bootstrap.sh manifest ace.conf   # print Slack manifest -> paste at api.slack.com
+Each agent gets its own `.conf` file (named after the agent, not `ace.conf`).
+The repo ships `ace.conf` as an example — replace it with your own agent name.
+
+### Interactive setup (recommended)
+
+The setup TUI walks you through every field and writes a `.conf` file for you:
+
+```bash
+./setup.sh
+# Prompts for: agent name, VM name, Slack tokens, Claude token, allowed users, etc.
+# Writes e.g. jarvis.conf (chmod 600) based on the agent name you choose.
+```
+
+### Manual setup
+
+```bash
+cp agent.conf.example myagent.conf && chmod 600 myagent.conf
+# Edit myagent.conf — set AGENT_NAME, VM_NAME, and any values you have so far.
+```
+
+### Deploy workflow
+
+Once you have a `.conf` file (via either method):
+
+```bash
+./bootstrap.sh manifest myagent.conf   # print Slack manifest -> paste at api.slack.com
 #   Install app, copy Bot token (xoxb-) + App-Level token (xapp-, connections:write)
 
-# put xoxb-/xapp-/sk-ant-oat01- + ALLOWED_USERS into ace.conf, then:
-./bootstrap.sh deploy ace.conf     # set CREATE_VM=true to also create the VM
+# Put xoxb-/xapp-/sk-ant-oat01- + ALLOWED_USERS into myagent.conf, then:
+# (see "Finding your Slack member ID" below)
+./bootstrap.sh deploy myagent.conf     # set CREATE_VM=true to also create the VM
 
-./bootstrap.sh status ace.conf
-./bootstrap.sh logs   ace.conf
+./bootstrap.sh status myagent.conf
+./bootstrap.sh logs   myagent.conf
 ```
 
 ## What deploy does on the VM
@@ -33,6 +57,17 @@ cp agent.conf.example ace.conf && chmod 600 ace.conf   # edit AGENT_NAME, VM_NAM
 5. Write `~/.enso/config.json` + `~/.enso/enso.env` (Claude token, mode 600).
 6. Install systemd `--user` service, wire token via `EnvironmentFile=`, enable
    linger (start on boot), restart.
+
+## Finding your Slack member ID
+`ALLOWED_USERS` needs Slack member IDs (they look like `U02FB3JNB`). To find yours:
+1. In Slack, click on your profile picture (or anyone's name).
+2. Click the **three dots** (...) menu.
+3. Select **Copy member ID**.
+
+After deploy you can also look up users by name from the VM:
+```bash
+ssh <vm>.exe.xyz '~/apps/enso/.venv/bin/enso slack lookup-user "name"'
+```
 
 ## Notes
 - `*.conf` files hold live secrets — gitignored; keep `chmod 600`.
