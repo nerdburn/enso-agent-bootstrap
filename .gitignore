@@ -1,0 +1,3 @@
+# Per-agent configs hold live tokens — never commit them.
+*.conf
+!agent.conf.example

@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────
+# enso-agent-bootstrap config. Copy to e.g. `ace.conf` and fill in.
+# Contains SECRETS — keep out of git (see .gitignore) and `chmod 600`.
+# ─────────────────────────────────────────────────────────────────────────
+
+# Display name for the agent (Slack bot name + manifest name). e.g. "Ace"
+AGENT_NAME="Ace"
+
+# exe.dev VM that will host this agent.
+#   - Existing VM:  set VM_NAME, leave CREATE_VM=false.
+#   - New VM:       set CREATE_VM=true and the script creates it.
+VM_NAME="ace-agent"
+CREATE_VM=false
+VM_CPU=2          # only used when CREATE_VM=true
+VM_MEMORY=4GB     # only used when CREATE_VM=true
+VM_DISK=20GB      # only used when CREATE_VM=true
+
+# Slack credentials for THIS agent's OWN Slack app.
+# Run `./bootstrap.sh manifest ace.conf` first to print a manifest to paste at
+# https://api.slack.com/apps?new_app=1  ->  "From an app manifest".
+# Install it, then fill these in:
+#   Bot User OAuth Token (OAuth & Permissions)            -> xoxb-...
+#   App-Level Token (Basic Info, scope connections:write) -> xapp-...
+SLACK_BOT_TOKEN="xoxb-..."
+SLACK_APP_TOKEN="xapp-..."
+
+# Claude Code long-lived OAuth token (run `claude setup-token` on a machine
+# with a browser + Claude subscription). Powers the agent's `claude -p`.
+CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..."
+
+# Slack user IDs (U...) allowed to talk to the bot. Space/comma separated.
+# The bot ONLY responds to these. After deploy, find IDs with:
+#   ssh <vm>.exe.xyz '~/apps/enso/.venv/bin/enso slack lookup-user "name"'
+ALLOWED_USERS="U02FB3JNB"
+
+# Optional default Slack channel (C...) for `enso message send` & job alerts.
+# Leave empty unless you want the agent to post unsolicited messages.
+NOTIFY_CHANNEL=""
+
+# enso git ref to install (branch or tag).
+ENSO_REF="main"
