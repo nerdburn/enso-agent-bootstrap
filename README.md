@@ -54,6 +54,29 @@ cp agent.conf.example agent.conf && chmod 600 agent.conf && $EDITOR agent.conf
 ./install.sh agent.conf
 ```
 
+## Shared defaults (tokens you set once)
+
+Values that are the same for every agent — tool tokens, lore remote, timezone,
+operator name — live once in `~/.config/enso-agent-bootstrap/defaults.conf`
+(`chmod 600`, same syntax as a conf). `bootstrap.sh` merges it under each
+agent's conf at deploy time; anything an agent conf sets non-empty wins, and
+`setup.sh` marks prompts that already have a default. Keep per-agent secrets
+(Slack tokens) out of it. Use agent-scoped tokens, not your personal logins:
+your laptop's `gh`, `vercel`, and `wrangler` sessions are OAuth tokens with
+refresh chains tied to your account and are not safe or even functional to copy.
+
+```bash
+# ~/.config/enso-agent-bootstrap/defaults.conf
+GH_TOKEN="github_pat_…"            # fine-grained PAT scoped to the agents' repos
+VERCEL_TOKEN="…"                   # vercel.com/account/tokens
+CLOUDFLARE_API_TOKEN="…"           # dash.cloudflare.com → My Profile → API Tokens
+CLOUDFLARE_ACCOUNT_ID="…"
+HEROKU_API_KEY="…"                 # heroku authorizations:create -d agents
+LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
+TIMEZONE="America/Vancouver"
+OPERATOR_NAME="Shawn Adrian"
+```
+
 ## Prerequisites
 
 - SSH key registered with exe.dev (`ssh exe.dev` once).

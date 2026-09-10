@@ -15,6 +15,10 @@
 #
 # --local (deploy/up) rsyncs this working copy to the VM instead of pulling
 # BOOTSTRAP_REPO — handy while editing the bootstrap itself.
+#
+# Values every agent shares (tool tokens, lore remote, timezone, operator) go
+# once in ~/.config/enso-agent-bootstrap/defaults.conf (chmod 600); an agent's
+# conf only needs what differs. Non-empty agent values win.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,8 +33,16 @@ CONF="${1:-}"
 [ -n "$CMD" ]  || { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 [ -n "$CONF" ] || die "usage: $0 $CMD [--local] <conf>"
 [ -f "$CONF" ] || die "config not found: $CONF"
+
+# Shared defaults (tool tokens, lore remote, timezone, …) live once in
+# ~/.config/enso-agent-bootstrap/defaults.conf; the agent conf overrides any
+# value it sets non-empty. The merged result is what reaches the VM.
+DEFAULTS="${ENSO_AGENT_DEFAULTS:-$HOME/.config/enso-agent-bootstrap/defaults.conf}"
+MERGED="$(mktemp)"; chmod 600 "$MERGED"; trap 'rm -f "$MERGED"' EXIT
+[ -f "$DEFAULTS" ] && cat "$DEFAULTS" >> "$MERGED"
+grep -Ev '^[A-Za-z_][A-Za-z0-9_]*=(""|'"''"')?$' "$CONF" >> "$MERGED"   # drop empty assignments
 # shellcheck disable=SC1090
-source "$CONF"
+source "$MERGED"
 
 : "${AGENT_NAME:?set AGENT_NAME in $CONF}"
 : "${VM_NAME:?set VM_NAME in $CONF}"
@@ -98,7 +110,7 @@ cmd_deploy() {
       else git clone -q '$BOOTSTRAP_REPO' ~/$REMOTE_DIR; fi" </dev/null
   fi
   log "running install.sh on $VM_HOST (conf passed over stdin, not argv)"
-  ssh "$VM_HOST" "VM_NAME='$VM_NAME' ~/$REMOTE_DIR/install.sh --conf -" < "$CONF"
+  ssh "$VM_HOST" "VM_NAME='$VM_NAME' ~/$REMOTE_DIR/install.sh --conf -" < "$MERGED"
 }
 
 cmd_lore_key() {
@@ -121,8 +133,8 @@ case "$CMD" in
   lore-key)          cmd_lore_key ;;
   up)                cmd_new_vm; cmd_slack_integration; cmd_deploy; cmd_lore_key
                      echo; echo "✅ '$AGENT_NAME' is live on $VM_HOST — DM it in Slack." ;;
-  status)            exec ssh "$VM_HOST" 'systemctl --user status enso.service --no-pager' ;;
-  logs)              exec ssh "$VM_HOST" 'journalctl --user -u enso.service -f' ;;
+  status)            exec ssh "$VM_HOST" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user status enso.service --no-pager' ;;
+  logs)              exec ssh "$VM_HOST" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); journalctl --user -u enso.service -f' ;;
   ssh)               exec ssh "$VM_HOST" ;;
   *)                 die "unknown command: $CMD" ;;
 esac

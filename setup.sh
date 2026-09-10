@@ -26,6 +26,22 @@ slug() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'; }
 echo; echo "${bold}${cyan}enso-agent-bootstrap setup${reset}"
 echo "${dim}Creates a .conf for a new Slack agent on exe.dev.${reset}"; echo
 
+# Shared defaults: anything set in ~/.config/enso-agent-bootstrap/defaults.conf
+# is applied by bootstrap.sh at deploy time, so those prompts can stay blank.
+DEFAULTS="${ENSO_AGENT_DEFAULTS:-$HOME/.config/enso-agent-bootstrap/defaults.conf}"
+D_GH="" D_VERCEL="" D_CF="" D_CFID="" D_HEROKU="" D_CLAUDE="" D_LORE="" D_TZ="" D_OP=""
+if [ -f "$DEFAULTS" ]; then
+  # shellcheck disable=SC1090
+  ( source "$DEFAULTS"; printf '%s\n' "${GH_TOKEN:+set}" "${VERCEL_TOKEN:+set}" "${CLOUDFLARE_API_TOKEN:+set}" \
+      "${CLOUDFLARE_ACCOUNT_ID:-}" "${HEROKU_API_KEY:+set}" "${CLAUDE_CODE_OAUTH_TOKEN:+set}" \
+      "${LORE_REMOTE:-}" "${TIMEZONE:-}" "${OPERATOR_NAME:-}" ) | {
+    IFS= read -r D_GH; IFS= read -r D_VERCEL; IFS= read -r D_CF; IFS= read -r D_CFID; IFS= read -r D_HEROKU
+    IFS= read -r D_CLAUDE; IFS= read -r D_LORE; IFS= read -r D_TZ; IFS= read -r D_OP
+    echo "${dim}Using shared defaults from ${DEFAULTS}; leave a prompt blank to keep its default.${reset}"; echo
+  }
+fi
+inherit() { [ -n "$1" ] && echo " ${dim}(default: set in defaults.conf)${reset}"; }
+
 # ── Identity ────────────────────────────────────────────────────────────────
 prompt AGENT_NAME "Agent name" "" "Slack display name (e.g. Ace, Jarvis, Scout)"
 [ -n "$AGENT_NAME" ] || { echo "Agent name is required." >&2; exit 1; }
@@ -52,24 +68,24 @@ prompt NOTIFY_CHANNEL  "Notify channel ID" "" "Optional C… channel for job ale
 
 # ── Claude ──────────────────────────────────────────────────────────────────
 echo
-prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...)" "From 'claude setup-token' on a machine with a browser. Blank = use exe.dev's LLM gateway"
+prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...)" "From 'claude setup-token' on a machine with a browser. Blank = exe.dev's LLM gateway$(inherit "$D_CLAUDE")"
 
 # ── Tools ───────────────────────────────────────────────────────────────────
 echo; echo "${dim}Tool credentials — all optional; the CLIs are installed either way.${reset}"
-prompt_secret GH_TOKEN             "GitHub token (gh + git push)"
-prompt_secret VERCEL_TOKEN         "Vercel token"
-prompt_secret CLOUDFLARE_API_TOKEN "Cloudflare API token (wrangler)"
-[ -n "$CLOUDFLARE_API_TOKEN" ] && prompt CLOUDFLARE_ACCOUNT_ID "Cloudflare account ID" "" || CLOUDFLARE_ACCOUNT_ID=""
-prompt_secret HEROKU_API_KEY       "Heroku API key"
+prompt_secret GH_TOKEN             "GitHub token (gh + git push)" "$(inherit "$D_GH")"
+prompt_secret VERCEL_TOKEN         "Vercel token" "$(inherit "$D_VERCEL")"
+prompt_secret CLOUDFLARE_API_TOKEN "Cloudflare API token (wrangler)" "$(inherit "$D_CF")"
+if [ -n "$CLOUDFLARE_API_TOKEN" ]; then prompt CLOUDFLARE_ACCOUNT_ID "Cloudflare account ID" "$D_CFID"; else CLOUDFLARE_ACCOUNT_ID=""; fi
+prompt_secret HEROKU_API_KEY       "Heroku API key" "$(inherit "$D_HEROKU")"
 
 # ── Git / lore / machine ────────────────────────────────────────────────────
 echo
 prompt GIT_USER_NAME  "Git author name on the VM"  "${AGENT_NAME} (enso agent)"
 prompt GIT_USER_EMAIL "Git author email on the VM" "${SLUG}-agent@users.noreply.github.com"
-prompt LORE_REMOTE    "lore remote" "exedev@lore-host.exe.xyz:/srv/lore/repos"
+prompt LORE_REMOTE    "lore remote" "${D_LORE:-exedev@lore-host.exe.xyz:/srv/lore/repos}"
 prompt LORE_CONTEXT   "lore context repo to attach now" "" "e.g. lore-jointly; blank to attach per workspace later"
-prompt TIMEZONE       "VM timezone" "America/Vancouver"
-prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "$(git config user.name 2>/dev/null || true)"
+prompt TIMEZONE       "VM timezone" "${D_TZ:-America/Vancouver}"
+prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "${D_OP:-$(git config user.name 2>/dev/null || true)}"
 prompt ENSO_REF       "enso git ref" "main"
 
 # ── Write ───────────────────────────────────────────────────────────────────
