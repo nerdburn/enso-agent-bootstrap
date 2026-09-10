@@ -46,9 +46,12 @@ CHANNEL_ID_RE = re.compile(r"[CG][A-Z0-9]{6,}")
 WORKSPACE_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 RESTRICTED_CHAT_COMMANDS = ("help", "status", "clear", "stop", "use", "model", "effort", "compact")
 DEFAULT_CONCURRENCY = "2"
+# Read-only memory for client-facing channels: no lore_remember (pinning facts into
+# the client's memory is an operator action, done from the admin DM route).
 LORE_TOOL_RULES = tuple(
-    f"mcp__lore__{tool}" for tool in ("lore_recall", "lore_grep", "lore_read", "lore_remember", "lore_sync_now")
+    f"mcp__lore__{tool}" for tool in ("lore_recall", "lore_grep", "lore_read", "lore_sync_now")
 )
+LORE_TOOL_DENY = ("mcp__lore__lore_remember",)
 LORE_SECTION = """
 ## Project memory (lore)
 
@@ -62,6 +65,8 @@ decisions, and pinned facts. The `lore-mcp` skill explains how to query it well.
   progress, or done; Slack and meetings are evidence, not decisions.
 - To refresh, call the `lore_sync_now` tool. Never try to run `lore sync`
   yourself: this workspace has no shell, credentials, or network for it.
+- You cannot pin facts into memory from here (`lore_remember` is denied); if
+  something should be remembered, say so and an administrator will pin it.
 """
 
 
@@ -354,12 +359,21 @@ def wire_lore(paths_root: str, policy_dir: str, workspace: str, context: str) ->
     # 2. Allow rules: under --permission-mode dontAsk an unreferenced MCP tool is denied.
     with open(settings_path, encoding="utf-8") as fh:
         settings = json.load(fh)
-    allow = settings.setdefault("permissions", {}).setdefault("allow", [])
+    perms = settings.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    deny = perms.setdefault("deny", [])
+    changed = False
     missing = [rule for rule in LORE_TOOL_RULES if rule not in allow]
     if missing:
-        allow.extend(missing)
+        allow.extend(missing); changed = True
+    for rule in LORE_TOOL_DENY:
+        if rule in allow:
+            allow.remove(rule); changed = True
+        if rule not in deny:
+            deny.append(rule); changed = True
+    if changed:
         _rewrite_private(settings_path, json.dumps(settings, indent=2) + "\n")
-        info(f"lore: allowed {len(missing)} mcp__lore__* tools in {settings_path}")
+        info(f"lore: settings.json now allows {', '.join(r.rsplit('__', 1)[1] for r in LORE_TOOL_RULES)} and denies lore_remember")
 
     # 3. Tell the workspace what it has.
     agents = os.path.join(paths_root, "workspaces", workspace, "AGENTS.md")
