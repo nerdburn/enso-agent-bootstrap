@@ -83,8 +83,8 @@ LORE_REMOTE="${LORE_REMOTE:-exedev@lore-host.exe.xyz:/srv/lore/repos}"
 LORE_CONTEXT="${LORE_CONTEXT:-}"
 TIMEZONE="${TIMEZONE:-}"
 OPERATOR_NAME="${OPERATOR_NAME:-}"
-ENSO_REF="${ENSO_REF:-main}"
-ENSO_REPO="${ENSO_REPO:-https://github.com/geekforbrains/enso}"
+ENSO_REF="${ENSO_REF:-v2}"
+ENSO_REPO="${ENSO_REPO:-https://github.com/nerdburn/enso}"
 LORE_REPO="${LORE_REPO:-https://github.com/nerdburn/lore}"
 ENSO_DIR="$HOME/apps/enso"
 LORE_DIR="$HOME/apps/lore"
@@ -184,10 +184,13 @@ done
 # ── 3. enso ──────────────────────────────────────────────────────────────────
 log "enso ($ENSO_REF)"
 if [ -d "$ENSO_DIR/.git" ]; then
+  # Existing checkouts follow ENSO_REPO too (VMs built before the mirror point at upstream).
+  git -C "$ENSO_DIR" remote set-url origin "$ENSO_REPO"
   git -C "$ENSO_DIR" fetch -q origin
   # Drop any locally applied patch before moving the checkout, re-applied below.
   git -C "$ENSO_DIR" checkout -q -- . 2>/dev/null || true
-  git -C "$ENSO_DIR" checkout -q "$ENSO_REF"
+  git -C "$ENSO_DIR" checkout -q "$ENSO_REF" 2>/dev/null \
+    || git -C "$ENSO_DIR" checkout -q -b "$ENSO_REF" "origin/$ENSO_REF"
   git -C "$ENSO_DIR" pull -q --ff-only origin "$ENSO_REF" 2>/dev/null || true
 else
   mkdir -p "$(dirname "$ENSO_DIR")"

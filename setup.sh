@@ -93,8 +93,8 @@ prompt LORE_REMOTE    "lore remote" "${D_LORE:-exedev@lore-host.exe.xyz:/srv/lor
 prompt LORE_CONTEXT   "lore context repo to attach now" "" "e.g. lore-jointly; blank to attach per workspace later"
 prompt TIMEZONE       "VM timezone" "${D_TZ:-America/Vancouver}"
 prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "${D_OP:-$(git config user.name 2>/dev/null || true)}"
-prompt ENSO_REPO      "enso git repo" "https://github.com/geekforbrains/enso" "Must carry enso 2.x; upstream main was rewritten as 0.1.x on 2026-09-10"
-prompt ENSO_REF       "enso git ref" "main"
+prompt ENSO_REPO      "enso git repo" "https://github.com/nerdburn/enso" "Must carry enso 2.x; upstream geekforbrains main was rewritten as 0.1.x on 2026-09-10"
+prompt ENSO_REF       "enso git ref" "v2"
 
 # ── Write ───────────────────────────────────────────────────────────────────
 umask 077

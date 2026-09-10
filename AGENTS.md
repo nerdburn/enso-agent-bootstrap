@@ -7,7 +7,7 @@ secrets and the Slack app creation need a person.
 
 ## What you are building
 
-- `enso` (github.com/geekforbrains/enso, v2.x) runs as a systemd `--user`
+- `enso` 2.x (mirrored at github.com/nerdburn/enso, branch `v2`) runs as a systemd `--user`
   service and bridges Slack ↔ the `claude` CLI on this machine.
 - The house setup adds: `gh`, `vercel`, `wrangler`, `heroku`, `lore` (project
   memory CLI + its two skills), tokens in `~/.enso/secrets/*.env`, an
@@ -99,5 +99,5 @@ secrets and the Slack app creation need a person.
   `CHANNELS` in the conf and re-run `./install.sh agent.conf`. A second
   workspace or a different policy is a post-install task with its own
   procedure in the house section of `~/.enso/AGENTS.md`; do it only when asked.
-- If `install.sh` stops with "enso at … is version 0.x", upstream enso main
-  no longer carries 2.x; ask the human for an `ENSO_REPO`/`ENSO_REF` that does.
+- If `install.sh` stops with "enso at … is version 0.x", the conf points at a
+  non-2.x enso; use `ENSO_REPO=https://github.com/nerdburn/enso`, `ENSO_REF=v2`.

@@ -87,8 +87,8 @@ OPERATOR_NAME="Shawn Adrian"     # seeds ~/.enso/docs/operator.md
 # ── Sources ──────────────────────────────────────────────────────────────
 # This bootstrap targets enso 2.x. Upstream main was rewritten as 0.1.x on
 # 2026-09-10 and no longer carries v2.0.0 (commit 9b1ad5d4e80da1eee73924f41b72d44cd029764b);
-# install.sh refuses a non-2.x checkout. Point these at a mirror that has it.
-ENSO_REPO="https://github.com/geekforbrains/enso"
-ENSO_REF="main"                  # branch, tag, or commit in ENSO_REPO
+# install.sh refuses a non-2.x checkout. nerdburn/enso carries it on branch v2.
+ENSO_REPO="https://github.com/nerdburn/enso"
+ENSO_REF="v2"                    # branch, tag, or commit in ENSO_REPO (v2 = enso 2.0.0 mirror)
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
 LORE_REPO="https://github.com/nerdburn/lore"

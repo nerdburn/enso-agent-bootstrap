@@ -1,7 +1,7 @@
 # enso-agent-bootstrap
 
 Turn a fresh [exe.dev](https://exe.dev) VM into a fully configured
-[enso](https://github.com/geekforbrains/enso) Slack agent — Claude Code behind a
+[enso](https://github.com/nerdburn/enso/tree/v2) 2.0 Slack agent — Claude Code behind a
 Slack bot, plus the house toolkit (`gh`, `vercel`, `wrangler`, `heroku`,
 [`lore`](https://github.com/nerdburn/lore) project memory) — in one command per
 agent. Tracks enso **2.x** (managed workspaces, exact Slack routes, policies).
