@@ -41,9 +41,12 @@ between Slack threads and produce answers grounded in the wrong conversation.
 
 Every Slack channel this agent answers in is an exact route in
 `~/.enso/config.json` under `transports.slack.channels`, pointing at a named
-workspace, which names a policy. Nothing is routed implicitly. The `workspace`
-and `policy` skills have the full procedure. The short version, for a trusted
-internal channel:
+workspace, which names a policy. Nothing is routed implicitly. The channels the
+operator listed at setup are already routed to a restricted read-only workspace
+by the bootstrap; adding more channels to that workspace is done by extending
+`CHANNELS` in the bootstrap conf and re-running `install.sh`, not by hand. For
+anything else the `workspace` and `policy` skills have the full procedure. The
+short version, for a trusted internal channel:
 
 ```bash
 enso slack lookup-channel "channel-name"                   # get the C… id

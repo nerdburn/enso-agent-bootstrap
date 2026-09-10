@@ -21,6 +21,8 @@
 #   4. secrets: ~/.enso/secrets/{claude,tools}.env (mode 600); Slack tokens stay
 #      in the exe.dev Slack Bot integration unless SLACK_MODE=direct
 #   5. fresh enso setup (non-interactive) → ~/.enso, DM routes, baseline commit
+#   5b. CHANNELS → one restricted workspace: sandboxed read-only Claude policy,
+#      `enso policy/workspace create`, exact routes, bot joins public channels
 #   6. house customizations: root AGENTS.md section, operator.md, lore skills
 #   7. lore: ~/.lore/config.json, SSH key for the lore host, optional MCP wiring
 #   8. systemd --user service + linger, config check, status
@@ -68,7 +70,10 @@ SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
 SLACK_APP_TOKEN="${SLACK_APP_TOKEN:-}"
 SLACK_OWNER_IDS="${SLACK_OWNER_IDS:-}"
 NOTIFY_CHANNEL="${NOTIFY_CHANNEL:-}"
+CHANNELS="${CHANNELS:-}"
+CHANNEL_WORKSPACE="${CHANNEL_WORKSPACE:-}"
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+CLAUDE_AUTH="${CLAUDE_AUTH:-subscription}"
 GH_TOKEN="${GH_TOKEN:-}"; VERCEL_TOKEN="${VERCEL_TOKEN:-}"
 CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"; CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 HEROKU_API_KEY="${HEROKU_API_KEY:-}"
@@ -79,6 +84,7 @@ LORE_CONTEXT="${LORE_CONTEXT:-}"
 TIMEZONE="${TIMEZONE:-}"
 OPERATOR_NAME="${OPERATOR_NAME:-}"
 ENSO_REF="${ENSO_REF:-main}"
+ENSO_REPO="${ENSO_REPO:-https://github.com/geekforbrains/enso}"
 LORE_REPO="${LORE_REPO:-https://github.com/nerdburn/lore}"
 ENSO_DIR="$HOME/apps/enso"
 LORE_DIR="$HOME/apps/lore"
@@ -185,10 +191,21 @@ if [ -d "$ENSO_DIR/.git" ]; then
   git -C "$ENSO_DIR" pull -q --ff-only origin "$ENSO_REF" 2>/dev/null || true
 else
   mkdir -p "$(dirname "$ENSO_DIR")"
-  git clone -q https://github.com/geekforbrains/enso "$ENSO_DIR"
+  git clone -q "$ENSO_REPO" "$ENSO_DIR"
   git -C "$ENSO_DIR" checkout -q "$ENSO_REF"
 fi
 info "enso @ $(git -C "$ENSO_DIR" log --oneline -1)"
+
+# Everything here (configure_enso.py, route_channels.py, the gateway patch) is
+# written against enso 2.x. Upstream main was rewritten as 0.1.x on 2026-09-10
+# and no longer carries v2.0.0, so a blind `main` checkout must fail loudly.
+ENSO_VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$ENSO_DIR/pyproject.toml" | head -1)"
+case "$ENSO_VERSION" in
+  2.*) info "enso version $ENSO_VERSION" ;;
+  *)   die "enso at $ENSO_REF is version '${ENSO_VERSION:-unknown}', but this bootstrap targets enso 2.x.
+       Point ENSO_REPO/ENSO_REF in the conf at a mirror of enso 2.0.0
+       (commit 9b1ad5d4e80da1eee73924f41b72d44cd029764b, e.g. a branch on your own fork) and re-run." ;;
+esac
 
 if [ "$SLACK_MODE" = "gateway" ]; then
   PATCH="$HERE/patches/0001-slack-api-gateway.patch"
@@ -229,13 +246,36 @@ log "secrets → ~/.enso/secrets"
 umask 077
 mkdir -p "$HOME/.enso/secrets"; chmod 700 "$HOME/.enso" "$HOME/.enso/secrets"
 
-if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-  printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$CLAUDE_CODE_OAUTH_TOKEN" > "$HOME/.enso/secrets/claude.env"
-  info "claude: subscription OAuth token"
-else
-  printf 'ANTHROPIC_BASE_URL=https://llm.int.exe.xyz\nANTHROPIC_API_KEY=implicit\n' > "$HOME/.enso/secrets/claude.env"
-  info "claude: exe.dev LLM gateway (no CLAUDE_CODE_OAUTH_TOKEN given)"
-fi
+# Claude is authenticated with the Claude subscription unless the conf opts into
+# exe.dev's LLM gateway. Subscription = a `claude setup-token` token in the conf,
+# or a `claude` login done on the VM afterwards (~/.claude/.credentials.json).
+CLAUDE_ENV="$HOME/.enso/secrets/claude.env"
+GATEWAY_ENV='ANTHROPIC_BASE_URL=https://llm.int.exe.xyz
+ANTHROPIC_API_KEY=implicit'
+CLAUDE_LOGIN_NEEDED=false
+case "$CLAUDE_AUTH" in
+  subscription)
+    if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+      printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$CLAUDE_CODE_OAUTH_TOKEN" > "$CLAUDE_ENV"
+      info "claude: subscription (OAuth token from the conf)"; CLAUDE_MODE="oauth-token"
+    else
+      # A gateway env left by an earlier run would override the login; drop it.
+      if [ -f "$CLAUDE_ENV" ] && [ "$(cat "$CLAUDE_ENV")" = "$GATEWAY_ENV" ]; then
+        rm -f "$CLAUDE_ENV"; info "claude: removed the LLM-gateway env from an earlier run"
+      fi
+      CLAUDE_MODE="login"
+      if [ -f "$HOME/.claude/.credentials.json" ]; then
+        info "claude: subscription (logged in on this VM)"
+      else
+        CLAUDE_LOGIN_NEEDED=true
+        warn "claude: no token in the conf and no login on this VM yet — log in (see the summary)"
+      fi
+    fi ;;
+  exe-gateway)
+    printf '%s\n' "$GATEWAY_ENV" > "$CLAUDE_ENV"
+    info "claude: exe.dev LLM gateway (CLAUDE_AUTH=exe-gateway)"; CLAUDE_MODE="llm-gateway" ;;
+  *) die "CLAUDE_AUTH must be 'subscription' or 'exe-gateway' (got '$CLAUDE_AUTH')" ;;
+esac
 
 {
   echo "# Tool credentials; loaded by 'enso serve' and inherited by the admin agent."
@@ -276,6 +316,20 @@ sed "s/__AGENT_NAME__/${AGENT_NAME}/g" "$HERE/lib/slack-manifest.json" > "$HOME/
 EXCL="$HOME/.enso/.git/info/exclude"
 if [ -d "$HOME/.enso/.git" ] && ! grep -qs '^/slack-app-manifest.json$' "$EXCL"; then
   mkdir -p "$(dirname "$EXCL")"; echo '/slack-app-manifest.json' >> "$EXCL"
+fi
+
+# ── 5b. Channel routes ───────────────────────────────────────────────────────
+# Every channel in CHANNELS → one restricted workspace (CHANNEL_WORKSPACE), with
+# a sandboxed read-only Claude policy; public channels are joined by the bot
+# itself. Idempotent: existing policy/workspace/routes are reused.
+ROUTE_REPORT="$(mktemp)"; trap 'rm -f "$ROUTE_REPORT" ${TMPCONF:-}' EXIT
+if [ -n "$CHANNELS" ]; then
+  log "slack channel routes"
+  CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" CLAUDE_MODE="$CLAUDE_MODE" \
+  LORE_CONTEXT="$LORE_CONTEXT" LORE_REMOTE="$LORE_REMOTE" \
+  ENSO_BIN="$ENSO_BIN" POLICY_TEMPLATE="$HERE/templates/claude-restricted-settings.json" \
+  WORKSPACE_TEMPLATE="$HERE/templates/AGENTS.workspace.md" ROUTE_REPORT="$ROUTE_REPORT" \
+    "$ENSO_PY" "$HERE/lib/route_channels.py"
 fi
 
 # ── 6. House customizations ──────────────────────────────────────────────────
@@ -363,11 +417,14 @@ cat <<SUMMARY
    logs:    journalctl --user -u enso.service -f
    config:  ~/.enso/config.json   (routes under transports.slack)
    slack:   $([ "$SLACK_MODE" = gateway ] && echo "tokens held by exe.dev integration '$VM_NAME' ($GATEWAY_URL)" || echo "tokens in config.json (direct mode)")
+$(cat "$ROUTE_REPORT" 2>/dev/null)
 
    Still human, once:
+$([ "$CLAUDE_LOGIN_NEEDED" = true ] && printf '   • Claude login — from your laptop: ssh -t %s.exe.xyz claude   (then /login and follow the prompts),\n     or put a `claude setup-token` token in CLAUDE_CODE_OAUTH_TOKEN and re-run. Until then Claude cannot answer.\n' "$VM_NAME")
    • lore access — register this VM's key with the lore host (from your laptop):
        ssh exe.dev ssh-key add --tag=lore "$(cat "$HOME/.ssh/id_ed25519.pub")"
      (bootstrap.sh lore-key <conf> does exactly this)
-   • invite the bot to any channel you want to route, then add the route
-     (see the house section of ~/.enso/AGENTS.md or ask the agent to do it)
+   • more channels later: add them to CHANNELS in the conf and re-run install.sh
+     (one restricted workspace); for a second workspace or a different policy,
+     see the house section of ~/.enso/AGENTS.md or ask the agent
 SUMMARY

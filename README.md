@@ -82,8 +82,10 @@ OPERATOR_NAME="Shawn Adrian"
 - SSH key registered with exe.dev (`ssh exe.dev` once).
 - Permission to create Slack apps in your workspace. Each agent gets **its own
   Slack app** and tokens; never share them between agents.
-- Optional: a Claude Code OAuth token from `claude setup-token` (browser +
-  Claude subscription). Leave it blank and the agent uses exe.dev's LLM gateway
+- Claude runs on the Claude subscription: either a Claude Code OAuth token from
+  `claude setup-token` (browser + subscription) in the conf, or leave it blank
+  and log in once on the VM after install (`ssh -t <vm>.exe.xyz claude`, then
+  `/login`). `CLAUDE_AUTH="exe-gateway"` switches to exe.dev's LLM gateway
   (`llm.int.exe.xyz`, billed to your exe.dev allocation) instead.
 - Optional tool tokens: GitHub PAT, Vercel token, Cloudflare API token, Heroku
   API key. The CLIs are installed regardless; tokens make them authenticated.
@@ -94,8 +96,9 @@ OPERATOR_NAME="Shawn Adrian"
 2. Installs `claude`, `gh`, `heroku`, `vercel`, `wrangler`; clones and builds
    `lore` from source (the npm package omits the skills we need).
 3. Clones enso at `ENSO_REF` into `~/apps/enso`, venv, `pip install -e .[slack,web]`.
-4. Writes `~/.enso/secrets/claude.env` (OAuth token, or the exe.dev LLM gateway
-   env) and `~/.enso/secrets/tools.env` (tool tokens). `enso serve` loads these,
+4. Writes `~/.enso/secrets/claude.env` (the OAuth token, or nothing when you
+   log in on the VM; the exe.dev gateway env only with `CLAUDE_AUTH=exe-gateway`)
+   and `~/.enso/secrets/tools.env` (tool tokens). `enso serve` loads these,
    so the admin agent inherits them. `gh`/`vercel`/`heroku` are also wired for
    interactive shells.
 5. Runs a **non-interactive fresh `enso setup`** via enso's own internals
@@ -104,6 +107,18 @@ OPERATOR_NAME="Shawn Adrian"
    `config.json` with one admin DM route per `SLACK_OWNER_IDS` entry to the
    `default` workspace (unrestricted `admin` policy), seeds `~/.enso`, records
    the baseline commit. Skipped when a completed setup already exists.
+   Then, if `CHANNELS` is set (`lib/route_channels.py`): resolves each channel
+   name to its `C…` id, joins public channels the bot is not in, writes a
+   sandboxed read-only Claude policy to
+   `~/.enso/policies/<workspace>-restricted/claude/settings.json` (once; from
+   `templates/claude-restricted-settings.json`), registers it with
+   `enso policy create`, creates the workspace with `enso workspace create`,
+   seeds its `AGENTS.md`, and adds one exact route per channel under
+   `transports.slack.channels`. Existing policy/workspace/routes are reused.
+   With `LORE_CONTEXT` (default `lore-<workspace>` if that repo exists on the
+   lore host) it also attaches project memory: a `lore mcp` server in the
+   policy's `claude/mcp.json`, `mcp__lore__*` allow rules, and a lore section
+   in the workspace `AGENTS.md`.
 6. Appends the house section to `~/.enso/AGENTS.md` (identity, tool inventory,
    thread discipline, how to route channels, lore), seeds `docs/operator.md`,
    installs the `lore-mcp` and `lore-onboard` skills, commits.
@@ -130,18 +145,25 @@ patch (two hunks) or fall back to `direct` until you do.
 
 ## After install: routing channels, memory, more agents
 
-- **DM the bot** from a `SLACK_OWNER_IDS` account. That is the only route until
-  you add channels — enso 2.x has no `allowed_users` mode.
-- **Route a channel**: invite the bot, then ask the agent to route it, or on the
-  VM: `enso workspace create <name> --policy admin`, add
-  `"C…": {"workspace": "<name>", "audit": true}` under `transports.slack.channels`
-  in `~/.enso/config.json`, `enso config check`, `enso service restart`. For a
-  channel clients can see, create a restricted policy first — see enso's
-  `docs/configuration.md` and `docs/specs/permissions.md`, and the accord-agent
-  VM for a worked example (`~/.enso/policies/jointly-team`).
-- **lore**: `bootstrap.sh lore-key` registers the VM's key with exe.dev scoped to
-  `tag:lore`. Attach memory per workspace with the `lore-onboard` skill or a
-  `lore mcp --context lore-<client>` server in the policy's `claude/mcp.json`.
+- **DM the bot** from a `SLACK_OWNER_IDS` account. Owner DMs go to the
+  unrestricted `default` workspace — enso 2.x has no `allowed_users` mode.
+- **Channels** come from the conf: `CHANNELS="caremobi caremobi-team"` routes
+  both to one restricted workspace (`CHANNEL_WORKSPACE`, default: the first
+  channel's name) whose Claude runs sandboxed and read-only. The bot joins
+  public channels itself; for a private channel type `/invite @Bot` in it (the
+  route is already there). To add channels later, extend `CHANNELS` and re-run
+  `install.sh` / `bootstrap.sh deploy`. The policy file is user-owned after the
+  first write — tune it on the VM, and test it as enso's
+  `docs/specs/permissions.md` describes before trusting it with a client.
+- **A second workspace or a trusted internal channel** is a manual step on the
+  VM: `enso policy create …`, `enso workspace create <name> --policy <policy>`,
+  add `"C…": {"workspace": "<name>", "audit": true}` under
+  `transports.slack.channels` in `~/.enso/config.json`, `enso config check`,
+  `enso service restart` — or ask the agent, whose house instructions cover it.
+- **lore**: `bootstrap.sh lore-key` (part of `up`) registers the VM's key with
+  exe.dev scoped to `tag:lore`. `LORE_CONTEXT` in the conf attaches that
+  project's memory to the channel workspace at install; if the context repo does
+  not exist yet, create it with the `lore-onboard` skill and re-run.
 - **Another agent** = another conf file and another Slack app. VMs are cheap;
   one agent per VM keeps credentials and workspaces apart.
 
@@ -170,7 +192,8 @@ install, from the VM: `enso slack lookup-user "name"`, `enso slack lookup-channe
 | `vm-setup-script.sh` | VM, first boot | clone this repo + `install.sh --tools-only` |
 | `install.sh` | VM | everything else; idempotent |
 | `lib/configure_enso.py` | VM | non-interactive fresh `enso setup` |
+| `lib/route_channels.py` | VM | `CHANNELS` → restricted policy + workspace + exact routes; joins public channels |
 | `lib/slack-manifest.json` | both | Slack app manifest (mirrors enso's bundled one, name templated) |
-| `templates/` | VM | house `AGENTS.md` section, `operator.md` |
+| `templates/` | VM | house `AGENTS.md` section, `operator.md`, workspace `AGENTS.md`, restricted Claude `settings.json` |
 | `patches/` | VM | Slack API gateway patch for enso, applied when `SLACK_MODE=gateway` (default) |
 | `AGENTS.md` / `CLAUDE.md` | VM agent | runbook for an agent doing the setup |

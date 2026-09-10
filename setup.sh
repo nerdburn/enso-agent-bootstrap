@@ -65,10 +65,17 @@ prompt_secret SLACK_BOT_TOKEN "Slack Bot Token (xoxb-...)" "OAuth & Permissions 
 prompt_secret SLACK_APP_TOKEN "Slack App Token (xapp-...)" "Basic Information → App-Level Tokens (scope connections:write)"
 prompt SLACK_OWNER_IDS "Your Slack member ID(s)" "" "U… ids that get an admin DM route (profile → ⋯ → Copy member ID); space/comma separated"
 prompt NOTIFY_CHANNEL  "Notify channel ID" "" "Optional C… channel for job alerts and unsolicited messages"
+prompt CHANNELS        "Channels to answer in" "" "Channel names or C… ids, space separated; all routed to one restricted read-only workspace. Blank = DMs only"
+if [ -n "$CHANNELS" ]; then
+  FIRST="$(echo "$CHANNELS" | tr ',' ' ' | awk '{print $1}' | sed 's/^#//')"
+  prompt CHANNEL_WORKSPACE "Workspace name for those channels" "$(slug "$FIRST")" "Lowercase kebab-case; policy becomes <name>-restricted"
+else
+  CHANNEL_WORKSPACE=""
+fi
 
 # ── Claude ──────────────────────────────────────────────────────────────────
 echo
-prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...)" "From 'claude setup-token' on a machine with a browser. Blank = exe.dev's LLM gateway$(inherit "$D_CLAUDE")"
+prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...)" "From 'claude setup-token' on a machine with a browser. Blank = log in on the VM once after install (subscription either way)$(inherit "$D_CLAUDE")"
 
 # ── Tools ───────────────────────────────────────────────────────────────────
 echo; echo "${dim}Tool credentials — all optional; the CLIs are installed either way.${reset}"
@@ -86,6 +93,7 @@ prompt LORE_REMOTE    "lore remote" "${D_LORE:-exedev@lore-host.exe.xyz:/srv/lor
 prompt LORE_CONTEXT   "lore context repo to attach now" "" "e.g. lore-jointly; blank to attach per workspace later"
 prompt TIMEZONE       "VM timezone" "${D_TZ:-America/Vancouver}"
 prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "${D_OP:-$(git config user.name 2>/dev/null || true)}"
+prompt ENSO_REPO      "enso git repo" "https://github.com/geekforbrains/enso" "Must carry enso 2.x; upstream main was rewritten as 0.1.x on 2026-09-10"
 prompt ENSO_REF       "enso git ref" "main"
 
 # ── Write ───────────────────────────────────────────────────────────────────
@@ -106,6 +114,9 @@ SLACK_APP_TOKEN="${SLACK_APP_TOKEN}"
 SLACK_OWNER_IDS="${SLACK_OWNER_IDS}"
 NOTIFY_CHANNEL="${NOTIFY_CHANNEL}"
 
+CHANNELS="${CHANNELS}"
+CHANNEL_WORKSPACE="${CHANNEL_WORKSPACE}"
+
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN}"
 
 GH_TOKEN="${GH_TOKEN}"
@@ -123,6 +134,7 @@ LORE_CONTEXT="${LORE_CONTEXT}"
 TIMEZONE="${TIMEZONE}"
 OPERATOR_NAME="${OPERATOR_NAME}"
 
+ENSO_REPO="${ENSO_REPO}"
 ENSO_REF="${ENSO_REF}"
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
 LORE_REPO="https://github.com/nerdburn/lore"

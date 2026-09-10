@@ -37,11 +37,28 @@ SLACK_OWNER_IDS="U02FB3JNB"
 # Optional channel (C…) for unsolicited posts: job alerts, `enso message send`.
 NOTIFY_CHANNEL=""
 
+# ── Channels ─────────────────────────────────────────────────────────────
+# Slack channels the agent answers in (when @mentioned), by name or C… id,
+# space/comma separated. install.sh routes ALL of them to ONE restricted
+# workspace, CHANNEL_WORKSPACE (default: the first channel's name), running
+# Claude under a sandboxed read-only policy written once to
+# ~/.enso/policies/<workspace>-restricted/claude/settings.json. The bot joins
+# public channels itself; a private channel needs `/invite @<AGENT_NAME>`
+# first (the route is added regardless, so no re-run is needed after the
+# invite). Blank = the bot answers only owner DMs. Add channels later by
+# extending this list and re-running install.sh.
+CHANNELS=""                      # e.g. "caremobi caremobi-team"
+CHANNEL_WORKSPACE=""             # e.g. "caremobi" (lowercase kebab-case)
+
 # ── Claude ───────────────────────────────────────────────────────────────
-# Long-lived token from `claude setup-token` (run on a machine with a browser
-# and a Claude subscription). Leave EMPTY to use exe.dev's LLM gateway
-# (https://llm.int.exe.xyz, billed to your exe.dev allocation) instead.
+# Claude always runs on the Claude subscription: either a long-lived token from
+# `claude setup-token` (run on a machine with a browser) here, or leave it
+# blank and log in once on the VM afterwards (`ssh -t <vm>.exe.xyz claude`,
+# then /login). Restricted channel workspaces inherit whichever you chose.
 CLAUDE_CODE_OAUTH_TOKEN=""
+# Set to "exe-gateway" only to bill exe.dev's LLM gateway (llm.int.exe.xyz)
+# instead of the subscription.
+CLAUDE_AUTH="subscription"
 
 # ── Tool credentials (all optional; blank = installed but unauthenticated) ─
 GH_TOKEN=""                      # GitHub PAT for gh + git pushes
@@ -56,8 +73,11 @@ GIT_USER_EMAIL="ace-agent@users.noreply.github.com"
 
 # ── lore project memory ──────────────────────────────────────────────────
 LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
-# Optional: a context repo (e.g. lore-jointly) to wire into the admin agent's
-# MCP config right away. Leave blank to attach memory per workspace later.
+# The project's lore context repo on the lore host (e.g. lore-caremobi). It is
+# attached to the CHANNEL_WORKSPACE (lore MCP server in the restricted policy)
+# and to the admin agent. Blank = "lore-<CHANNEL_WORKSPACE>" when that repo
+# exists on the host; otherwise no memory until you create it (lore-onboard).
+# The VM's SSH key must be registered for lore: bootstrap.sh lore-key / up.
 LORE_CONTEXT=""
 
 # ── Machine ──────────────────────────────────────────────────────────────
@@ -65,6 +85,10 @@ TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone
 OPERATOR_NAME="Shawn Adrian"     # seeds ~/.enso/docs/operator.md
 
 # ── Sources ──────────────────────────────────────────────────────────────
-ENSO_REF="main"                  # geekforbrains/enso branch, tag, or commit
+# This bootstrap targets enso 2.x. Upstream main was rewritten as 0.1.x on
+# 2026-09-10 and no longer carries v2.0.0 (commit 9b1ad5d4e80da1eee73924f41b72d44cd029764b);
+# install.sh refuses a non-2.x checkout. Point these at a mirror that has it.
+ENSO_REPO="https://github.com/geekforbrains/enso"
+ENSO_REF="main"                  # branch, tag, or commit in ENSO_REPO
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
 LORE_REPO="https://github.com/nerdburn/lore"
