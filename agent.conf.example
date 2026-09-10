@@ -1,41 +1,70 @@
 # ─────────────────────────────────────────────────────────────────────────
-# enso-agent-bootstrap config. Copy to e.g. `ace.conf` and fill in.
-# Contains SECRETS — keep out of git (see .gitignore) and `chmod 600`.
+# enso-agent-bootstrap config. One file per agent, e.g. `ace.conf`.
+# Contains SECRETS — gitignored (*.conf); keep it `chmod 600`.
+# Every value can also be supplied as an environment variable to install.sh.
 # ─────────────────────────────────────────────────────────────────────────
 
-# Display name for the agent (Slack bot name + manifest name). e.g. "Ace"
-AGENT_NAME="Ace"
+# ── Identity ─────────────────────────────────────────────────────────────
+AGENT_NAME="Ace"                 # Slack bot display name + manifest name
+VM_NAME="ace-agent"              # exe.dev VM; reachable as <VM_NAME>.exe.xyz
+VM_CPU=2                         # used by `bootstrap.sh new-vm`
+VM_MEMORY=4GB
+VM_DISK=20GB
 
-# exe.dev VM that will host this agent.
-#   - Existing VM:  set VM_NAME, leave CREATE_VM=false.
-#   - New VM:       set CREATE_VM=true and the script creates it.
-VM_NAME="ace-agent"
-CREATE_VM=false
-VM_CPU=2          # only used when CREATE_VM=true
-VM_MEMORY=4GB     # only used when CREATE_VM=true
-VM_DISK=20GB      # only used when CREATE_VM=true
+# ── Slack ────────────────────────────────────────────────────────────────
+# Create the Slack app first:  ./bootstrap.sh manifest ace.conf
+# → paste at https://api.slack.com/apps?new_app=1 ("From an app manifest"),
+#   Install to workspace, then copy:
+#   OAuth & Permissions → Bot User OAuth Token            -> xoxb-...
+#   Basic Information → App-Level Tokens (connections:write) -> xapp-...
+#
+# SLACK_MODE=gateway  (default) tokens live in an exe.dev "Slack Bot" integration
+#                     named after the VM and are injected at the network edge; the
+#                     VM never holds them. `./bootstrap.sh up` creates the
+#                     integration from the two tokens below and applies the
+#                     vendored enso patch. Once the integration exists you may
+#                     blank the tokens here.
+# SLACK_MODE=direct   tokens are stored in ~/.enso/config.json on the VM.
+SLACK_MODE="gateway"
+SLACK_BOT_TOKEN=""
+SLACK_APP_TOKEN=""
 
-# Slack credentials for THIS agent's OWN Slack app.
-# Run `./bootstrap.sh manifest ace.conf` first to print a manifest to paste at
-# https://api.slack.com/apps?new_app=1  ->  "From an app manifest".
-# Install it, then fill these in:
-#   Bot User OAuth Token (OAuth & Permissions)            -> xoxb-...
-#   App-Level Token (Basic Info, scope connections:write) -> xapp-...
-SLACK_BOT_TOKEN="xoxb-..."
-SLACK_APP_TOKEN="xapp-..."
+# Slack user IDs (U…) that get an administrative DM route to the `default`
+# workspace (unrestricted `admin` policy). Space/comma separated. Find yours:
+# Slack profile → ⋯ → "Copy member ID".
+SLACK_OWNER_IDS="U02FB3JNB"
 
-# Claude Code long-lived OAuth token (run `claude setup-token` on a machine
-# with a browser + Claude subscription). Powers the agent's `claude -p`.
-CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..."
-
-# Slack user IDs (U...) allowed to talk to the bot. Space/comma separated.
-# The bot ONLY responds to these. After deploy, find IDs with:
-#   ssh <vm>.exe.xyz '~/apps/enso/.venv/bin/enso slack lookup-user "name"'
-ALLOWED_USERS="U02FB3JNB"
-
-# Optional default Slack channel (C...) for `enso message send` & job alerts.
-# Leave empty unless you want the agent to post unsolicited messages.
+# Optional channel (C…) for unsolicited posts: job alerts, `enso message send`.
 NOTIFY_CHANNEL=""
 
-# enso git ref to install (branch or tag).
-ENSO_REF="main"
+# ── Claude ───────────────────────────────────────────────────────────────
+# Long-lived token from `claude setup-token` (run on a machine with a browser
+# and a Claude subscription). Leave EMPTY to use exe.dev's LLM gateway
+# (https://llm.int.exe.xyz, billed to your exe.dev allocation) instead.
+CLAUDE_CODE_OAUTH_TOKEN=""
+
+# ── Tool credentials (all optional; blank = installed but unauthenticated) ─
+GH_TOKEN=""                      # GitHub PAT for gh + git pushes
+VERCEL_TOKEN=""                  # https://vercel.com/account/tokens
+CLOUDFLARE_API_TOKEN=""          # wrangler
+CLOUDFLARE_ACCOUNT_ID=""
+HEROKU_API_KEY=""                # `heroku authorizations:create`
+
+# ── Git identity on the VM ───────────────────────────────────────────────
+GIT_USER_NAME="Ace (enso agent)"
+GIT_USER_EMAIL="ace-agent@users.noreply.github.com"
+
+# ── lore project memory ──────────────────────────────────────────────────
+LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
+# Optional: a context repo (e.g. lore-jointly) to wire into the admin agent's
+# MCP config right away. Leave blank to attach memory per workspace later.
+LORE_CONTEXT=""
+
+# ── Machine ──────────────────────────────────────────────────────────────
+TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone
+OPERATOR_NAME="Shawn Adrian"     # seeds ~/.enso/docs/operator.md
+
+# ── Sources ──────────────────────────────────────────────────────────────
+ENSO_REF="main"                  # geekforbrains/enso branch, tag, or commit
+BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
+LORE_REPO="https://github.com/nerdburn/lore"
