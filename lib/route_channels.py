@@ -312,7 +312,10 @@ def lore_context_exists(context: str) -> bool | None:
         return None
     host, root = remote.split(":", 1)
     proc = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", host, "test", "-d", f"{root}/{context}.git"],
+        # accept-new: on a fresh VM this is the first contact with the lore host
+        # (install.sh writes the same option to ~/.ssh/config in a later step).
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "StrictHostKeyChecking=accept-new",
+         host, "test", "-d", f"{root}/{context}.git"],
         capture_output=True, text=True,
     )
     if proc.returncode == 0:
