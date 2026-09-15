@@ -67,9 +67,10 @@ change with a scoped `git -C ~/.enso add <paths> && git -C ~/.enso commit`.
 
 `lore` is installed and `~/.lore/config.json` points at the lore host. When a
 workspace has project memory attached, the `lore-mcp` skill explains how to
-query it (`lore_recall`, `lore_grep`, `lore_read`, `lore_sync_now`) and when a
-pin via `lore_remember` is allowed. To attach memory to a workspace or onboard a
-new client, use the `lore-onboard` skill. This VM's SSH public key must be
+query it and when each write (pins, documents, SOWs, tracker moves) is
+appropriate. `lore mcp --list-tools` prints exactly which tools this build
+exposes; never assume the list from memory, it grows. To attach memory to a
+workspace or onboard a new client, use the `lore-onboard` skill. This VM's SSH public key must be
 registered with `ssh exe.dev ssh-key add --tag=lore` before lore can clone; if
 `lore` reports an SSH or permission error, that step is still pending — tell the
 operator, do not try to work around it.

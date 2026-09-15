@@ -117,8 +117,11 @@ OPERATOR_NAME="Shawn Adrian"
    `transports.slack.channels`. Existing policy/workspace/routes are reused.
    With `LORE_CONTEXT` (default `lore-<workspace>` if that repo exists on the
    lore host) it also attaches project memory: a `lore mcp` server in the
-   policy's `claude/mcp.json`, `mcp__lore__*` allow rules, and a lore section
-   in the workspace `AGENTS.md`.
+   policy's `claude/mcp.json`, an allow rule for every tool the installed
+   lore reports via `lore mcp --list-tools` (minus `LORE_DENY_TOOLS`, default
+   `lore_remember`), and a marker-fenced lore section in the workspace
+   `AGENTS.md`. The list is never hand-written, so it cannot go stale; a
+   re-run reconciles allow/deny and refreshes the section.
 6. Appends the house section to `~/.enso/AGENTS.md` (identity, tool inventory,
    thread discipline, how to route channels, lore), seeds `docs/operator.md`,
    installs the `lore-mcp` and `lore-onboard` skills, commits.

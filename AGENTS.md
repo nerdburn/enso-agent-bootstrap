@@ -58,7 +58,10 @@ secrets and the Slack app creation need a person.
      subscription; never fall back to the exe.dev LLM gateway on your own;
    - the **lore context repo** for the project (e.g. `lore-caremobi`); it is
      attached to the channel workspace at install. If they don't know, leave
-     it blank: `lore-<workspace>` is used when it exists on the lore host;
+     it blank: `lore-<workspace>` is used when it exists on the lore host.
+     The workspace gets every lore MCP tool the installed lore exposes except
+     `LORE_DENY_TOOLS` (default `lore_remember`); only ask if they want more
+     denied (e.g. `lore_sow_add`) for a client-facing channel;
    - optional tool tokens: GitHub PAT, Vercel token, Cloudflare API token +
      account ID, Heroku API key (blank means installed but unauthenticated);
    - optional: notify channel ID, timezone.
@@ -76,6 +79,11 @@ secrets and the Slack app creation need a person.
    - if `CHANNELS` was set, the install summary lists each channel as routed to
      the workspace, and a `lore:` line when project memory was attached;
      `enso slack lookup-channel <name>` shows the id it used;
+   - the `lore:` summary's `tools allowed:` line names every tool that
+     `lore mcp --list-tools` prints on this VM except `LORE_DENY_TOOLS`
+     (default `lore_remember`). Never type a lore tool list from memory into a
+     settings.json or AGENTS.md: it is derived from the installed lore so it
+     cannot go stale, and a re-run refreshes it;
    - ask the human to DM the bot in Slack and confirm it answers, and to
      @mention it in one of the routed channels.
    If the service is not active, `journalctl --user -u enso.service -n 50` has

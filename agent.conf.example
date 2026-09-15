@@ -79,6 +79,11 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # exists on the host; otherwise no memory until you create it (lore-onboard).
 # The VM's SSH key must be registered for lore: bootstrap.sh lore-key / up.
 LORE_CONTEXT=""
+# lore MCP tools the channel workspace must NOT call. Everything else the
+# installed lore exposes (`lore mcp --list-tools`) is allowed, so a new agent
+# always gets the full current set. Default: lore_remember (pinning facts into
+# the client's memory is an operator action). Add lore_sow_add etc. to taste.
+LORE_DENY_TOOLS="lore_remember"
 
 # ── Machine ──────────────────────────────────────────────────────────────
 TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone
