@@ -479,20 +479,25 @@ AG="$ENSO_HOME/AGENTS.md"
 if grep -q "^You're Enso, an assistant" "$AG" && [ "$AGENT_NAME" != Enso ]; then
   sed -i "s/^You're Enso, an assistant/You're ${AGENT_NAME}, an assistant/" "$AG"; CHANGED+=(AGENTS.md)
 fi
-if ! grep -q "enso-agent-bootstrap:house" "$AG" && ! grep -q "^## This installation" "$AG"; then
-  if [ -n "$PROJECT_DIR" ]; then
-    PROJECT_SECTION="
+PROJECT_SECTION=""
+if [ -n "$PROJECT_DIR" ]; then
+  PROJECT_SECTION="
 ## Software development
 
 The project checkout is \`$PROJECT_DIR\` (\`$PROJECT_REPO\`). Follow its \`AGENTS.md\` and branch
 workflow. Git access uses \`github.int.exe.xyz\`; use \`gh\` normally through the installed
 wrapper, or set \`GH_HOST=github.int.exe.xyz\` explicitly. Never place credentials or real
-customer data in the repository.${CHANNEL_WORKSPACE:+ The channels bound to \`$CHANNEL_WORKSPACE\` use one
-unrestricted workspace with the full development toolchain, Enso CLI, link access, and Lore.}"
-  else PROJECT_SECTION=""; fi
+customer data in the repository.${CHANNEL_WORKSPACE:+ The conversations bound to \`$CHANNEL_WORKSPACE\` use one
+unrestricted workspace with the full development toolchain, Enso CLI, and link access.}"
+fi
+if ! grep -q "enso-agent-bootstrap:house" "$AG" && ! grep -q "^## This installation" "$AG"; then
   render "$HERE/templates/AGENTS.house.md" \
     | PS="$PROJECT_SECTION" awk '{ if ($0 == "__PROJECT_SECTION__") { if (ENVIRON["PS"] != "") print ENVIRON["PS"] } else print }' >> "$AG"
   CHANGED+=(AGENTS.md); info "appended the house section to $AG"
+elif [ -n "$PROJECT_SECTION" ] && grep -q "enso-agent-bootstrap:house" "$AG" && ! grep -q "^## Software development" "$AG"; then
+  # A project added after the first install: extend the bootstrap's own section.
+  printf '%s\n' "$PROJECT_SECTION" >> "$AG"
+  CHANGED+=(AGENTS.md); info "added the software-development section for $PROJECT_REPO"
 fi
 DEF="$ENSO_HOME/workspaces/default/AGENTS.md"
 if grep -q "^Operate this Enso installation across its workspaces" "$DEF" 2>/dev/null; then
