@@ -294,6 +294,13 @@ fi
 log "enso $ENSO_VERSION (official release)"
 INSTALLED="$(jq -r '.version // empty' "$ENSO_HOME/runtime/install.json" 2>/dev/null || true)"
 if [ -z "$INSTALLED" ]; then
+  # An older enso's launcher (often a symlink into its venv) blocks the release
+  # installer; keep it beside the new one.
+  if [ -e "$ENSO_BIN" ] || [ -L "$ENSO_BIN" ]; then
+    if ! grep -qs "Enso managed launcher" "$ENSO_BIN"; then
+      mv "$ENSO_BIN" "$ENSO_BIN.legacy-$(date +%Y%m%d-%H%M%S)"; info "moved the old unmanaged enso launcher aside"
+    fi
+  fi
   if [ "$ENSO_VERSION" = latest ]; then URL="https://github.com/geekforbrains/enso/releases/latest/download/install.sh"
   else URL="https://github.com/geekforbrains/enso/releases/download/v${ENSO_VERSION}/install.sh"; fi
   curl -fsSL "$URL" | sh -s -- --home "$ENSO_HOME" --extras slack,web >/dev/null
