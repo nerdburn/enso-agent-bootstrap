@@ -43,6 +43,7 @@ NOTIFY_CHANNEL=""
 # needs `/invite @<AGENT_NAME>` (the binding is written regardless).
 CHANNELS=""                      # e.g. "merrin merrin-team"
 CHANNEL_WORKSPACE=""             # e.g. "merrin" (lowercase kebab-case)
+DM_WORKSPACE=""                  # where owner DMs go; blank = the `default` operator workspace
 
 # ── Code ─────────────────────────────────────────────────────────────────
 # exe.dev GitHub integrations to attach to this VM (bootstrap.sh integrations).

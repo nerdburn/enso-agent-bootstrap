@@ -2,8 +2,9 @@
 """Read a pre-0.4 enso home (the enso 2.x fork, or older) for install.sh --migrate.
 
 Prints shell assignments (`KEY='value'`) for the values a fresh 0.4 install
-needs and the conf left blank: Slack tokens, owner IDs, the channel workspace
-and its channel IDs, the lore context, and the notify target. Values the conf
+needs and the conf left blank: Slack tokens, owner IDs, the workspace owner DMs
+went to, the channel workspace and its channel IDs, the lore context, and the
+notify target. Values the conf
 already sets win; nothing here is written anywhere else. Exits non-zero, with
 the reason, when the home cannot be migrated automatically (several channel
 workspaces, no usable tokens), before install.sh stops anything.
@@ -87,6 +88,12 @@ def main() -> None:
                 if "--context" in args and args.index("--context") + 1 < len(args):
                     out["LORE_CONTEXT"] = args[args.index("--context") + 1]
                     break
+
+    # Where owner DMs went. Keep a DM route to a named workspace (e.g. tally's DMs
+    # → `tally`) instead of rebinding it to `default`.
+    dm_ws = {(r.get("workspace") if isinstance(r, dict) else None) or "default" for r in (slack.get("dms") or {}).values()}
+    if not os.environ.get("DM_WORKSPACE") and len(dm_ws) == 1 and dm_ws != {"default"}:
+        out["DM_WORKSPACE"] = dm_ws.pop()
 
     notify = slack.get("notify_channel") or slack.get("notify") or ""
     if not os.environ.get("NOTIFY_CHANNEL") and notify:

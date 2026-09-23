@@ -91,8 +91,14 @@ layouts. `./install.sh --migrate agent.conf` handles the bootstrap-built 2.x
 agents: it reads tokens, owners, channels and the lore context from the old
 config (the conf wins where set), checks the Slack tokens, **then** stops the
 old service, tars the home to `~/backups/`, moves it to `~/.enso-legacy-<ts>`,
-installs fresh, carries the channel workspace's `knowledge/` over, and prints
-rollback commands if anything fails. A stopped run resumes from
+installs fresh, and prints rollback commands if anything fails. What it carries:
+a customized channel/DM workspace moves across whole (instructions, skills,
+knowledge, drafts; a bootstrap-generated one is rebuilt and only its
+`knowledge/` comes along); DMs stay bound to the workspace they used
+(`DM_WORKSPACE`); `credentials/`, `secrets/` and `shared/` data keep their
+`~/.enso/...` paths (gitignored, `secrets/*.env` loaded by the service drop-in);
+custom home skills; and home-level jobs, converted to 0.4 `JOB.md` in their
+workspace. A stopped run resumes from
 `~/.enso-legacy-path`. VMs whose gateway-mode config holds placeholder tokens
 need the real `xoxb-`/`xapp-` tokens in the conf first; it refuses before
 touching anything otherwise. A home with several channel workspaces or custom

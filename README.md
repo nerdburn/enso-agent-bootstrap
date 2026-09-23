@@ -86,7 +86,7 @@ OPERATOR_NAME="Shawn Adrian"
 - **enso 0.2.0 or later** (official release): `enso update apply` on the VM.
   Check afterwards whether jobs relied on `~/.enso/secrets/*.env` (0.4 stopped
   loading it) and, if so, point `10-agent-env.conf` at the file.
-- **Bootstrap-built enso 2.x fork agents**: `./bootstrap.sh migrate ace.conf`
+- **enso 2.x fork agents** (bootstrap-built or customized, like tally-agent): `./bootstrap.sh migrate ace.conf`
   (= integrations + `install.sh --migrate`). It checks the Slack tokens first,
   then stops the old service, backs up and moves the old home to
   `~/.enso-legacy-<ts>`, installs fresh, and prints rollback commands on
@@ -104,7 +104,8 @@ OPERATOR_NAME="Shawn Adrian"
 | `vm-setup-script.sh` | VM, first boot | clone this repo + `install.sh --tools-only` |
 | `install.sh` | VM | everything else; idempotent; `--migrate` for enso 2.x-fork homes |
 | `lib/configure_enso.py` | VM | Slack checks, channel resolution, channel workspace, `enso config apply`/`set` |
-| `lib/read_legacy.py` | VM | reads an old home's tokens/owners/channels/lore context for `--migrate` |
+| `lib/read_legacy.py` | VM | reads an old home's tokens/owners/DM workspace/channels/lore context for `--migrate` |
+| `lib/convert_jobs.py` | VM | converts an old home's `jobs/*/JOB.md` to 0.4 workspace jobs for `--migrate` |
 | `lib/slack-manifest.json` | both | enso 0.4's Slack manifest + `channels:join`, name templated |
 | `templates/` | VM | house `AGENTS.md` section, channel and operator workspace `AGENTS.md`, operator note |
 | `AGENTS.md` / `CLAUDE.md` | VM agent | runbook for an agent doing the setup |

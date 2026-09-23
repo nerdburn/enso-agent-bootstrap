@@ -17,12 +17,12 @@ validates every change.
      (--add-dir), --dangerously-skip-permissions, and a strict MCP config whose
      only server is lore over the exe.dev `lore-mcp` integration.
   4. config.json: a fresh home gets the complete document (DM bindings for
-     SLACK_OWNER_IDS → default, channel bindings → the workspace, notify = the
+     SLACK_OWNER_IDS → DM_WORKSPACE, default `default`, channel bindings → the workspace, notify = the
      first owner's DM). An existing config.json is never replaced: missing
      bindings are added and changed tokens updated with `enso config set`.
 
 Inputs (environment, exported by install.sh): AGENT_NAME, VM_NAME, ENSO_BIN,
-ENSO_HOME, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_OWNER_IDS, NOTIFY_CHANNEL,
+ENSO_HOME, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_OWNER_IDS, DM_WORKSPACE, NOTIFY_CHANNEL,
 CHANNELS, CHANNEL_WORKSPACE, LORE_CONTEXT, LORE_MCP_URL, PROJECT_DIR,
 DEFAULT_MODEL, DEFAULT_EFFORT, AGENT_TIMEOUT, WEB_PORT, OPERATOR_NAME,
 WORKSPACE_TEMPLATE, REPORT (file collecting summary lines).
@@ -348,7 +348,10 @@ def main() -> None:
     if workspace:
         lines += ensure_workspace(workspace, channels)
 
-    bindings = {f"slack:dm:{o}": "default" for o in owners}
+    dm_ws = env("DM_WORKSPACE") or "default"
+    if dm_ws != "default" and not os.path.isdir(os.path.join(home(), "workspaces", dm_ws)):
+        die(f"DM_WORKSPACE {dm_ws!r} does not exist in {home()}/workspaces")
+    bindings = {f"slack:dm:{o}": dm_ws for o in owners}
     bindings.update({f"slack:{ch['id']}": workspace for ch in channels})
 
     if existing is None:

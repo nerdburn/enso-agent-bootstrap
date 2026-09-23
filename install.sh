@@ -76,6 +76,7 @@ SLACK_OWNER_IDS="${SLACK_OWNER_IDS:-}"
 NOTIFY_CHANNEL="${NOTIFY_CHANNEL:-}"
 CHANNELS="${CHANNELS:-}"
 CHANNEL_WORKSPACE="${CHANNEL_WORKSPACE:-}"
+DM_WORKSPACE="${DM_WORKSPACE:-}"          # where owner DMs are bound; blank = default
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
 CLAUDE_AUTH="${CLAUDE_AUTH:-subscription}"
 GH_TOKEN="${GH_TOKEN:-}"; VERCEL_TOKEN="${VERCEL_TOKEN:-}"
@@ -233,7 +234,7 @@ fi
 if [ -n "$RESUME_LEGACY" ]; then
   LEGACY_VARS="$(mktemp)"; chmod 600 "$LEGACY_VARS"; TMPFILES+=("$LEGACY_VARS")
   SLACK_BOT_TOKEN="$SLACK_BOT_TOKEN" SLACK_APP_TOKEN="$SLACK_APP_TOKEN" SLACK_OWNER_IDS="$SLACK_OWNER_IDS" \
-  CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" LORE_CONTEXT="$LORE_CONTEXT" NOTIFY_CHANNEL="$NOTIFY_CHANNEL" \
+  CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" LORE_CONTEXT="$LORE_CONTEXT" NOTIFY_CHANNEL="$NOTIFY_CHANNEL" DM_WORKSPACE="$DM_WORKSPACE" \
     python3 "$HERE/lib/read_legacy.py" "$RESUME_LEGACY" > "$LEGACY_VARS"
   # shellcheck disable=SC1090
   source "$LEGACY_VARS"
@@ -245,7 +246,7 @@ if [ "$MIGRATE" = true ]; then
   log "migrate: reading the legacy home"
   LEGACY_VARS="$(mktemp)"; chmod 600 "$LEGACY_VARS"; TMPFILES+=("$LEGACY_VARS")
   SLACK_BOT_TOKEN="$SLACK_BOT_TOKEN" SLACK_APP_TOKEN="$SLACK_APP_TOKEN" SLACK_OWNER_IDS="$SLACK_OWNER_IDS" \
-  CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" LORE_CONTEXT="$LORE_CONTEXT" NOTIFY_CHANNEL="$NOTIFY_CHANNEL" \
+  CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" LORE_CONTEXT="$LORE_CONTEXT" NOTIFY_CHANNEL="$NOTIFY_CHANNEL" DM_WORKSPACE="$DM_WORKSPACE" \
     python3 "$HERE/lib/read_legacy.py" "$ENSO_HOME" > "$LEGACY_VARS"
   # shellcheck disable=SC1090
   source "$LEGACY_VARS"
@@ -321,6 +322,62 @@ if [ "$TOOLS_ONLY" = true ]; then
   exit 0
 fi
 [ -n "$SLACK_OWNER_IDS" ] || die "SLACK_OWNER_IDS is required (your Slack member ID, U...)"
+
+# ── 3b. Migration: carry the legacy home's own content ──────────────────────
+# Everything below keeps its old path, because the new home is at the same
+# place and the agent's scripts refer to ~/.enso/... directly.
+BOOTSTRAP_WS_MARK='read-only workspace under a restricted policy|enso-agent-bootstrap:lore'
+if [ -n "$LEGACY_HOME" ]; then
+  log "migrate: carrying custom content from $(basename "$LEGACY_HOME")"
+  # Workspaces the old config used, other than default. A bootstrap-generated one
+  # (old restricted template) is rebuilt fresh; a customized one moves across whole.
+  for ws in $(printf '%s\n' "$CHANNEL_WORKSPACE" "$DM_WORKSPACE" | grep -v '^default$' | sort -u); do
+    L="$LEGACY_HOME/workspaces/$ws"; N="$ENSO_HOME/workspaces/$ws"
+    [ -d "$L" ] && [ ! -e "$N" ] || continue
+    if grep -qE "$BOOTSTRAP_WS_MARK" "$L/AGENTS.md" 2>/dev/null; then
+      info "workspace $ws: bootstrap-generated; rebuilt fresh (knowledge carried later)"
+    else
+      cp -a "$L" "$N"
+      rm -rf "$N/.runtime"
+      if [ -d "$N/knowledge" ]; then
+        ( cd "$N/knowledge" && find . -name '*.md' -printf '%P\n' ) | while IFS= read -r note; do
+          "$ENSO_BIN" knowledge adopt "$note" --workspace "$ws" >/dev/null 2>&1 || warn "could not adopt knowledge note $ws:$note"
+        done
+      fi
+      info "workspace $ws: carried over whole (instructions, skills, knowledge, drafts)"
+    fi
+  done
+  # Runtime data and credentials that lived beside the old config.
+  for d in credentials secrets; do
+    if [ -d "$LEGACY_HOME/$d" ] && [ ! -e "$ENSO_HOME/$d" ]; then cp -a "$LEGACY_HOME/$d" "$ENSO_HOME/$d"; info "carried ~/$(basename "$ENSO_HOME")/$d"; fi
+  done
+  if [ -d "$LEGACY_HOME/shared" ]; then
+    for f in "$LEGACY_HOME"/shared/*; do
+      if [ -e "$f" ] && [ "$(basename "$f")" != knowledge ] && [ ! -e "$ENSO_HOME/shared/$(basename "$f")" ]; then
+        cp -a "$f" "$ENSO_HOME/shared/"; info "carried shared/$(basename "$f")"
+      fi
+    done
+  fi
+  # Carried runtime data never enters the home's local git history.
+  {
+    echo "# enso-agent-bootstrap: data carried from $(basename "$LEGACY_HOME") (not for history)"
+    for d in credentials secrets; do if [ -e "$ENSO_HOME/$d" ]; then echo "/$d/"; fi; done
+    for f in "$ENSO_HOME"/shared/*; do if [ -e "$f" ] && [ "$(basename "$f")" != knowledge ]; then echo "/shared/$(basename "$f")"; fi; done
+    echo "__pycache__/"; echo "*.pyc"
+  } > "$ENSO_HOME/.gitignore.carried"
+  if ! grep -qs "enso-agent-bootstrap: data carried" "$ENSO_HOME/.gitignore"; then
+    { cat "$ENSO_HOME/.gitignore.carried"; echo; if [ -f "$ENSO_HOME/.gitignore" ]; then cat "$ENSO_HOME/.gitignore"; fi; } > "$ENSO_HOME/.gitignore.new"
+    mv "$ENSO_HOME/.gitignore.new" "$ENSO_HOME/.gitignore"
+  fi
+  rm -f "$ENSO_HOME/.gitignore.carried"
+  # Custom home skills (the fork's stock ones are replaced by enso's enso-* skills).
+  for sk in "$LEGACY_HOME"/skills/*/; do
+    n="$(basename "$sk")"
+    case "$n" in docs|jobs|policy|slack|tables|workspace|enso|enso-*|lore-mcp|lore-onboard) continue ;; esac
+    [ -e "$ENSO_HOME/skills/$n" ] || { cp -a "$sk" "$ENSO_HOME/skills/$n"; info "carried skill $n"; }
+  done
+  "$ENSO_BIN" workspace audit --fix >/dev/null 2>&1 || true
+fi
 
 # ── 4. Tool tokens and Claude auth ───────────────────────────────────────────
 log "credentials → $AGENT_ENV"
@@ -399,11 +456,15 @@ log "enso configuration"
 REPORT="$(mktemp)"; TMPFILES+=("$REPORT")
 AGENT_NAME="$AGENT_NAME" VM_NAME="$VM_NAME" ENSO_BIN="$ENSO_BIN" ENSO_HOME="$ENSO_HOME" \
 SLACK_BOT_TOKEN="$SLACK_BOT_TOKEN" SLACK_APP_TOKEN="$SLACK_APP_TOKEN" SLACK_OWNER_IDS="$SLACK_OWNER_IDS" \
-NOTIFY_CHANNEL="$NOTIFY_CHANNEL" CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" \
+NOTIFY_CHANNEL="$NOTIFY_CHANNEL" CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" DM_WORKSPACE="$DM_WORKSPACE" \
 LORE_CONTEXT="$LORE_CONTEXT" LORE_MCP_URL="$LORE_MCP_URL" PROJECT_DIR="$PROJECT_DIR" \
 DEFAULT_MODEL="$DEFAULT_MODEL" DEFAULT_EFFORT="$DEFAULT_EFFORT" OPERATOR_NAME="$OPERATOR_NAME" \
 WORKSPACE_TEMPLATE="$HERE/templates/AGENTS.workspace.md" REPORT="$REPORT" \
   python3 "$HERE/lib/configure_enso.py"
+if [ -n "$LEGACY_HOME" ] && [ -d "$LEGACY_HOME/jobs" ]; then
+  log "migrate: converting home-level jobs"
+  python3 "$HERE/lib/convert_jobs.py" "$LEGACY_HOME" "$ENSO_HOME" "${DM_WORKSPACE:-default}"
+fi
 [ -n "$CHANNEL_WORKSPACE" ] || CHANNEL_WORKSPACE="$(jq -r '[.bindings | to_entries[] | select(.value != "default") | .value][0] // empty' "$ENSO_HOME/config.json")"
 
 # ── 7. House layer ───────────────────────────────────────────────────────────
@@ -471,9 +532,14 @@ sudo loginctl enable-linger "$USER" >/dev/null 2>&1 || true
 "$ENSO_BIN" service install >/dev/null || die "enso service install failed"
 DROPIN_DIR="$HOME/.config/systemd/user/enso.service.d"
 rm -f "$DROPIN_DIR/bootstrap.conf"
-if grep -q '=' <(grep -v '^#' "$AGENT_ENV"); then
+ENV_FILES=()
+grep -q '=' <(grep -v '^#' "$AGENT_ENV") && ENV_FILES+=("$AGENT_ENV")
+# enso 0.4 stopped loading secrets/*.env; an older home's app secrets stay there
+# (scripts read the files directly) and the service keeps getting them as env.
+for f in "$ENSO_HOME"/secrets/*.env; do [ -f "$f" ] && ENV_FILES+=("$f"); done
+if [ ${#ENV_FILES[@]} -gt 0 ]; then
   mkdir -p "$DROPIN_DIR"
-  printf '[Service]\nEnvironmentFile=-%s\n' "$AGENT_ENV" > "$DROPIN_DIR/10-agent-env.conf"
+  { echo '[Service]'; for f in "${ENV_FILES[@]}"; do echo "EnvironmentFile=-$f"; done; } > "$DROPIN_DIR/10-agent-env.conf"
 else
   rm -f "$DROPIN_DIR/10-agent-env.conf"
 fi
