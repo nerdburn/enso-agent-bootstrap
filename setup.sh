@@ -60,18 +60,22 @@ prompt VM_DISK   "VM disk"   "20GB"
 # ── Slack ───────────────────────────────────────────────────────────────────
 echo
 echo "${dim}Slack app: run './bootstrap.sh manifest ${CONF_FILE}' after this and paste the JSON at api.slack.com.${reset}"
-prompt SLACK_MODE "Slack token mode (gateway|direct)" "gateway" "gateway = tokens held by an exe.dev Slack Bot integration, never on the VM; direct = tokens in ~/.enso/config.json"
 prompt_secret SLACK_BOT_TOKEN "Slack Bot Token (xoxb-...)" "OAuth & Permissions → Bot User OAuth Token"
 prompt_secret SLACK_APP_TOKEN "Slack App Token (xapp-...)" "Basic Information → App-Level Tokens (scope connections:write)"
 prompt SLACK_OWNER_IDS "Your Slack member ID(s)" "" "U… ids that get an admin DM route (profile → ⋯ → Copy member ID); space/comma separated"
 prompt NOTIFY_CHANNEL  "Notify channel ID" "" "Optional C… channel for job alerts and unsolicited messages"
-prompt CHANNELS        "Channels to answer in" "" "Channel names or C… ids, space separated; all routed to one restricted read-only workspace. Blank = DMs only"
+prompt CHANNELS        "Channels to answer in" "" "Channel names or C… ids, space separated; all bound to one full-access workspace. Blank = DMs only"
 if [ -n "$CHANNELS" ]; then
   FIRST="$(echo "$CHANNELS" | tr ',' ' ' | awk '{print $1}' | sed 's/^#//')"
-  prompt CHANNEL_WORKSPACE "Workspace name for those channels" "$(slug "$FIRST")" "Lowercase kebab-case; policy becomes <name>-restricted"
+  prompt CHANNEL_WORKSPACE "Workspace name for those channels" "$(slug "$FIRST")" "Lowercase kebab-case"
 else
   CHANNEL_WORKSPACE=""
 fi
+
+# ── Code ────────────────────────────────────────────────────────────────────
+echo
+prompt GITHUB_INTEGRATIONS "exe.dev GitHub integration(s)" "" "Names from 'ssh exe.dev integrations list', attached to this VM only (e.g. inputlogic-merrin). Blank = none"
+prompt PROJECT_REPO "Project repo to check out" "" "owner/repo, cloned via github.int.exe.xyz into ~/apps (e.g. inputlogic/merrin). Blank = none"
 
 # ── Claude ──────────────────────────────────────────────────────────────────
 echo
@@ -79,7 +83,7 @@ prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...
 
 # ── Tools ───────────────────────────────────────────────────────────────────
 echo; echo "${dim}Tool credentials — all optional; the CLIs are installed either way.${reset}"
-prompt_secret GH_TOKEN             "GitHub token (gh + git push)" "$(inherit "$D_GH")"
+prompt_secret GH_TOKEN             "GitHub token (only without an integration)" "$(inherit "$D_GH")"
 prompt_secret VERCEL_TOKEN         "Vercel token" "$(inherit "$D_VERCEL")"
 prompt_secret CLOUDFLARE_API_TOKEN "Cloudflare API token (wrangler)" "$(inherit "$D_CF")"
 if [ -n "$CLOUDFLARE_API_TOKEN" ]; then prompt CLOUDFLARE_ACCOUNT_ID "Cloudflare account ID" "$D_CFID"; else CLOUDFLARE_ACCOUNT_ID=""; fi
@@ -87,14 +91,11 @@ prompt_secret HEROKU_API_KEY       "Heroku API key" "$(inherit "$D_HEROKU")"
 
 # ── Git / lore / machine ────────────────────────────────────────────────────
 echo
-prompt GIT_USER_NAME  "Git author name on the VM"  "${AGENT_NAME} (enso agent)"
-prompt GIT_USER_EMAIL "Git author email on the VM" "${SLUG}-agent@users.noreply.github.com"
 prompt LORE_REMOTE    "lore remote" "${D_LORE:-exedev@lore-host.exe.xyz:/srv/lore/repos}"
-prompt LORE_CONTEXT   "lore context repo to attach now" "" "e.g. lore-jointly; blank to attach per workspace later"
+prompt LORE_CONTEXT   "lore context repo" "" "e.g. lore-merrin; reached over the exe.dev lore-mcp integration. Blank = none yet"
 prompt TIMEZONE       "VM timezone" "${D_TZ:-America/Vancouver}"
 prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "${D_OP:-$(git config user.name 2>/dev/null || true)}"
-prompt ENSO_REPO      "enso git repo" "https://github.com/nerdburn/enso" "Must carry enso 2.x; upstream geekforbrains main was rewritten as 0.1.x on 2026-09-10"
-prompt ENSO_REF       "enso git ref" "v2"
+prompt ENSO_VERSION   "enso release" "0.4.0" "Official release from github.com/geekforbrains/enso ('latest' also works)"
 
 # ── Write ───────────────────────────────────────────────────────────────────
 umask 077
@@ -108,7 +109,6 @@ VM_CPU=${VM_CPU}
 VM_MEMORY=${VM_MEMORY}
 VM_DISK=${VM_DISK}
 
-SLACK_MODE="${SLACK_MODE}"
 SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}"
 SLACK_APP_TOKEN="${SLACK_APP_TOKEN}"
 SLACK_OWNER_IDS="${SLACK_OWNER_IDS}"
@@ -116,6 +116,9 @@ NOTIFY_CHANNEL="${NOTIFY_CHANNEL}"
 
 CHANNELS="${CHANNELS}"
 CHANNEL_WORKSPACE="${CHANNEL_WORKSPACE}"
+
+GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS}"
+PROJECT_REPO="${PROJECT_REPO}"
 
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN}"
 
@@ -125,17 +128,13 @@ CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN}"
 CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID}"
 HEROKU_API_KEY="${HEROKU_API_KEY}"
 
-GIT_USER_NAME="${GIT_USER_NAME}"
-GIT_USER_EMAIL="${GIT_USER_EMAIL}"
-
 LORE_REMOTE="${LORE_REMOTE}"
 LORE_CONTEXT="${LORE_CONTEXT}"
 
 TIMEZONE="${TIMEZONE}"
 OPERATOR_NAME="${OPERATOR_NAME}"
 
-ENSO_REPO="${ENSO_REPO}"
-ENSO_REF="${ENSO_REF}"
+ENSO_VERSION="${ENSO_VERSION}"
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
 LORE_REPO="https://github.com/nerdburn/lore"
 CONF
