@@ -108,7 +108,14 @@ attach() {  # attach <integration>
 }
 
 cmd_integrations() {
-  [ -n "${LORE_CONTEXT:-}" ] && attach "${LORE_MCP_INTEGRATION:-lore-mcp}"
+  if [ -n "${LORE_CONTEXT:-}" ]; then
+    attach "${LORE_MCP_INTEGRATION:-lore-mcp}"
+    # The hosted MCP endpoint also checks the host's own allow list
+    # (~/.lore/agents.json); without it Claude sees a 403 and asks for OAuth.
+    LORE_HOST="${LORE_REMOTE:-exedev@lore-host.exe.xyz:/srv/lore/repos}"; LORE_HOST="${LORE_HOST%%:*}"
+    log "allowing $VM_NAME to open $LORE_CONTEXT on $LORE_HOST"
+    ssh "$LORE_HOST" "lore agents allow '$VM_NAME' '$LORE_CONTEXT'" </dev/null
+  fi
   for gh_int in $(echo "${GITHUB_INTEGRATIONS:-}" | tr ',' ' '); do attach "$gh_int"; done
   true
 }

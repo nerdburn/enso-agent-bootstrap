@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
 done
 
 TMPFILES=()
-cleanup() { rm -f "${TMPFILES[@]}" 2>/dev/null || true; }
+cleanup() { [ ${#TMPFILES[@]} -eq 0 ] || rm -f "${TMPFILES[@]}" 2>/dev/null || true; }
 trap cleanup EXIT
 if [ -n "$CONF" ]; then
   if [ "$CONF" = "-" ]; then
