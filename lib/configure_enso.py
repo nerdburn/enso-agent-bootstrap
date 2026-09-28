@@ -243,29 +243,75 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
             fh.write(text)
         info(f"workspace {name}: wrote AGENTS.md")
 
-    # MCP: lore over the exe.dev lore-mcp integration (http; no SSH key needed).
-    mcp_args: list[str] = []
+    policy = (env("WORKSPACE_POLICY") or "full").lower()
+    if policy not in ("full", "restricted"):
+        die(f"WORKSPACE_POLICY {policy!r} must be 'full' or 'restricted'")
     context = env("LORE_CONTEXT")
+    if policy == "restricted" and not context:
+        die("WORKSPACE_POLICY=restricted requires LORE_CONTEXT (the sandbox allow list is lore-only)")
+
+    # MCP: lore over the exe.dev lore-mcp integration (http; no SSH key needed).
+    # Full policy merges into any existing mcp.json (operator may have added
+    # extras). Restricted regenerates from scratch — the sandbox allow list
+    # covers lore tools only, so any other MCP would be loaded but unusable.
+    mcp_args: list[str] = []
     mcp_path = os.path.join(ws, ".claude", "mcp.json")
     if context:
         url = env("LORE_MCP_URL", "https://lore-mcp.int.exe.xyz/mcp").rstrip("/") + "/" + context
-        doc = {"mcpServers": {}}
-        if os.path.isfile(mcp_path):
-            with open(mcp_path, encoding="utf-8") as fh:
-                doc = json.load(fh)
-        if doc.setdefault("mcpServers", {}).get("lore") != {"type": "http", "url": url}:
-            doc["mcpServers"]["lore"] = {"type": "http", "url": url}
+        lore_entry = {"type": "http", "url": url}
+        if policy == "restricted":
+            doc = {"mcpServers": {"lore": lore_entry}}
             os.makedirs(os.path.dirname(mcp_path), exist_ok=True)
             with open(mcp_path, "w", encoding="utf-8") as fh:
                 fh.write(json.dumps(doc, indent=2) + "\n")
-            info(f"workspace {name}: lore MCP → {url}")
+            info(f"workspace {name}: wrote .claude/mcp.json (lore only)")
+        else:
+            doc = {"mcpServers": {}}
+            if os.path.isfile(mcp_path):
+                with open(mcp_path, encoding="utf-8") as fh:
+                    doc = json.load(fh)
+            if doc.setdefault("mcpServers", {}).get("lore") != lore_entry:
+                doc["mcpServers"]["lore"] = lore_entry
+                os.makedirs(os.path.dirname(mcp_path), exist_ok=True)
+                with open(mcp_path, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(doc, indent=2) + "\n")
+                info(f"workspace {name}: lore MCP → {url}")
         mcp_args = ["--strict-mcp-config", "--mcp-config", mcp_path]
         notes.append(f"   lore:     context '{context}' → workspace '{name}' via {url}")
 
-    # workspace.json: written once; after that it is the operator's.
-    settings = os.path.join(ws, "workspace.json")
+    settings_json = os.path.join(ws, "workspace.json")
     project = env("PROJECT_DIR")
-    if os.path.exists(settings):
+
+    if policy == "restricted":
+        # Render the sandbox policy from the committed template. Source of truth
+        # is this repo, so we always regenerate — a lore-tool change flows out
+        # by re-running install.sh.
+        cc_settings = os.path.join(ws, ".claude", "settings.json")
+        os.makedirs(os.path.dirname(cc_settings), exist_ok=True)
+        doc = render_restricted_settings(ws)
+        with open(cc_settings, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(doc, indent=2) + "\n")
+        info(f"workspace {name}: wrote .claude/settings.json (restricted policy)")
+
+        wjson = {
+            "agent": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
+            "providers": {"claude": {"args": [
+                "--settings", cc_settings,
+                "--permission-mode", "dontAsk",
+                "--setting-sources", "project",
+                "--strict-mcp-config",
+                "--mcp-config", mcp_path,
+            ]}},
+        }
+        with open(settings_json, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(wjson, indent=2) + "\n")
+        os.chmod(settings_json, 0o600)
+        info(f"workspace {name}: wrote workspace.json (restricted)")
+        notes.append(f"   policy:   restricted (sandbox from templates/settings.restricted.json.tmpl)")
+        return notes
+
+    # Full-access policy (abby/merrin house setup).
+    if os.path.exists(settings_json):
         info(f"workspace {name}: workspace.json exists; left alone")
     elif project or mcp_args:
         args = (["--add-dir", project] if project else []) + ["--dangerously-skip-permissions"] + mcp_args
@@ -273,7 +319,7 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
             "agent": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
             "providers": {"claude": {"args": args}},
         }
-        fd = os.open(settings, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(settings_json, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(doc, indent=2) + "\n")
         info(f"workspace {name}: wrote workspace.json (full access{', project ' + project if project else ''})")
@@ -290,6 +336,45 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
                 fh.write(f"---\nname: {name.replace('-', ' ').title()}\nstages:\n- work\nrepo: {project}\n---\n")
             info(f"workspace {name}: project {key} → {project}")
     return notes
+
+
+def render_restricted_settings(workspace_dir: str) -> dict:
+    """Render templates/settings.restricted.json.tmpl for this workspace, then append
+    per-conf extras (RESTRICTED_ALLOW_DOMAINS, RESTRICTED_DENY_WRITE).
+
+    A RESTRICTED_DENY_WRITE path that lives under the workspace root is also
+    mirrored into permissions.deny as an Edit(<relative-path>) rule — belt and
+    suspenders alongside the sandbox filesystem layer."""
+    tmpl = env("SETTINGS_RESTRICTED_TEMPLATE")
+    if not tmpl or not os.path.isfile(tmpl):
+        die(f"restricted policy template missing (SETTINGS_RESTRICTED_TEMPLATE={tmpl!r})")
+    with open(tmpl, encoding="utf-8") as fh:
+        raw = fh.read()
+    raw = (
+        raw.replace("__VM_NAME__", env("VM_NAME"))
+        .replace("__WORKSPACE_ABS__", workspace_dir)
+        .replace("__HOME__", os.path.expanduser("~"))
+    )
+    doc = json.loads(raw)
+    for dom in split_list(env("RESTRICTED_ALLOW_DOMAINS")):
+        if dom not in doc["sandbox"]["network"]["allowedDomains"]:
+            doc["sandbox"]["network"]["allowedDomains"].append(dom)
+    # A trailing "/**" or "/" marks a directory subtree (works for paths that
+    # may not exist yet); otherwise fall back to os.path.isdir at runtime.
+    ws_prefix = workspace_dir.rstrip("/") + "/"
+    for raw_path in split_list(env("RESTRICTED_DENY_WRITE")):
+        wildcard = raw_path.endswith("/**")
+        trailing_slash = raw_path.endswith("/") and not wildcard
+        bare = raw_path[:-3] if wildcard else raw_path.rstrip("/") if trailing_slash else raw_path
+        if bare not in doc["sandbox"]["filesystem"]["denyWrite"]:
+            doc["sandbox"]["filesystem"]["denyWrite"].append(bare)
+        if bare.startswith(ws_prefix):
+            rel = bare[len(ws_prefix):]
+            is_dir = wildcard or trailing_slash or os.path.isdir(bare)
+            rule = f"Edit({rel}/**)" if is_dir else f"Edit({rel})"
+            if rule not in doc["permissions"]["deny"]:
+                doc["permissions"]["deny"].append(rule)
+    return doc
 
 
 # ── config.json ────────────────────────────────────────────────────────────────
@@ -360,7 +445,7 @@ def main() -> None:
             "version": 2,
             "transports": {"slack": {
                 "bot_token": bot, "app_token": app, "notify": notify,
-                "mention_required": True, "thread_mention_required": False,
+                "mention_required": True, "thread_mention_required": True,
             }},
             "bindings": bindings,
             "defaults": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
@@ -389,7 +474,9 @@ def main() -> None:
         info(f"config.json exists; {'updated ' + ', '.join(changed) if changed else 'nothing to change'}")
 
     if channels:
-        lines.insert(0, f"   channels: {', '.join('#' + ch['name'] for ch in channels)} → workspace '{workspace}' (full access)")
+        policy = (env("WORKSPACE_POLICY") or "full").lower()
+        label = "restricted" if policy == "restricted" else "full access"
+        lines.insert(0, f"   channels: {', '.join('#' + ch['name'] for ch in channels)} → workspace '{workspace}' ({label})")
     if pending:
         lines.append("   • channels still needing you:")
         lines += [f"       - {p}" for p in pending]

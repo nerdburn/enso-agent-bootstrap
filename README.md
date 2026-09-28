@@ -56,16 +56,17 @@ cp agent.conf.example agent.conf && chmod 600 agent.conf && $EDITOR agent.conf
 | enso | Official managed release (`ENSO_VERSION`, default 0.4.0): runtime in `~/.enso/runtime`, launcher `~/.local/bin/enso`, `enso.service` (user unit, linger). Later upgrades: `enso update apply`, announced nightly by `default:enso-update`. |
 | Slack | Tokens in `~/.enso/config.json` (mode 600). `mention_required: true`, `thread_mention_required: false`. The manifest is enso's own plus `channels:join`, so the bot joins public channels itself. |
 | Bindings | `slack:dm:<owner>` → `default` (operator workspace, unrestricted); every `CHANNELS` entry → `CHANNEL_WORKSPACE`. |
-| Channel workspace | Full access, like `#merrin`: `workspace.json` gives Claude `--add-dir <checkout> --dangerously-skip-permissions --strict-mcp-config --mcp-config .claude/mcp.json`; `mcp.json` holds only lore over HTTP (`https://lore-mcp.int.exe.xyz/mcp/<context>`). `lore_remember` is allowed but only on an explicit ask (workspace `AGENTS.md`). A `PROJECT.md` points enso's task engine at the checkout. |
+| Channel workspace | `WORKSPACE_POLICY=full` (the default, like `#merrin`): `workspace.json` gives Claude `--add-dir <checkout> --dangerously-skip-permissions --strict-mcp-config --mcp-config .claude/mcp.json`; `mcp.json` holds only lore over HTTP (`https://lore-mcp.int.exe.xyz/mcp/<context>`); a `PROJECT.md` points enso's task engine at the checkout. `WORKSPACE_POLICY=restricted` (like `#jointly-team`): `.claude/settings.json` is rendered from `templates/settings.restricted.json.tmpl` — strict permission allowlist (lore MCP tools only), sandbox with network + filesystem denies, credential env vars denied; `workspace.json` runs Claude with `--settings … --permission-mode dontAsk --setting-sources project`, no `--add-dir`, no `--dangerously-skip-permissions`. Per-agent extras via `RESTRICTED_ALLOW_DOMAINS` and `RESTRICTED_DENY_WRITE`. |
 | GitHub | exe.dev integrations attached to this VM only (`GITHUB_INTEGRATIONS`; a team integration attaches by giving the VM its client tag). git and gh use `github.int.exe.xyz`; `~/.local/bin/gh` sets `GH_HOST`. The git identity is the exe.dev integration bot. |
 | lore | Channel workspace: HTTP via the `lore-mcp` integration (no SSH key). Admin agent: stdio `lore mcp` + the lore CLI, which need the VM's key registered with `ssh exe.dev ssh-key add --tag=lore`. Skills `lore-mcp` and `lore-onboard` are installed in `~/.enso/skills`. |
 | Instructions | Home `AGENTS.md` names the agent and adds the house section (identity, operator, lore, thread discipline, tools, software development); `default` gets operator-workspace instructions; `shared/knowledge/People/<operator>.md` records the operator. |
 | Credentials | Claude on the subscription (`claude setup-token` in the conf, or `/login` on the VM). Tool tokens go to `~/.config/enso-agent/env`, loaded by `enso.service.d/10-agent-env.conf` (enso 0.4 no longer reads `secrets/*.env`). |
 
 Binding a channel trusts everyone in it with that workspace's capabilities; on
-enso 0.4, workspaces organize context and are not security boundaries. If a
-client channel should not have the toolchain, give its workspace a restricted
-`workspace.json` by hand (accord-agent's sandboxed policy is the worked example).
+enso 0.4, workspaces organize context and are not security boundaries. Full-access
+workspaces are the default; set `WORKSPACE_POLICY=restricted` on a client-facing
+agent to run its channel workspace under the committed sandbox policy instead
+(`accord.conf` is the worked example — no more hand-editing on the VM).
 
 ## Shared defaults (tokens you set once)
 

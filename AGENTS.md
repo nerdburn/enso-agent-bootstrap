@@ -10,13 +10,21 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
 - `enso` **0.4** (the official release from github.com/geekforbrains/enso),
   installed as a managed runtime under `~/.enso/runtime` with the launcher
   `~/.local/bin/enso`, running as the systemd `--user` service `enso.service`.
-- The house setup, modelled on abby-agent: owner DMs bound to the `default`
-  operator workspace; the project's Slack channels bound to one **full-access**
-  channel workspace (Claude with `--dangerously-skip-permissions`, the project
-  checkout added, lore as its only MCP server over the exe.dev `lore-mcp`
-  integration); GitHub through exe.dev integrations at `github.int.exe.xyz`
-  with a `gh` wrapper; `vercel`, `wrangler`, `heroku`, `lore` + its skills;
-  house instructions in `~/.enso/AGENTS.md`; an operator knowledge note.
+- The house setup: owner DMs bound to the `default` operator workspace; the
+  project's Slack channels bound to one channel workspace under a
+  `WORKSPACE_POLICY` chosen in the conf —
+  - **`full`** (default, abby/merrin pattern): Claude with
+    `--dangerously-skip-permissions`, the project checkout `--add-dir`'d, lore
+    as its only MCP server over the exe.dev `lore-mcp` integration;
+  - **`restricted`** (accord/jointly-team pattern): `.claude/settings.json`
+    rendered from `templates/settings.restricted.json.tmpl` (strict permission
+    allowlist of lore MCP tools + Claude built-ins, sandboxed network and
+    filesystem, credential env vars denied), Claude run with
+    `--permission-mode dontAsk --setting-sources project` and no shell/deploy
+    access.
+  GitHub through exe.dev integrations at `github.int.exe.xyz` with a `gh`
+  wrapper; `vercel`, `wrangler`, `heroku`, `lore` + its skills; house
+  instructions in `~/.enso/AGENTS.md`; an operator knowledge note.
 - `install.sh` is idempotent. Re-running is always safe; an existing
   `config.json` is only extended (missing bindings, changed tokens), never replaced.
 
@@ -101,9 +109,10 @@ custom home skills; and home-level jobs, converted to 0.4 `JOB.md` in their
 workspace. A stopped run resumes from
 `~/.enso-legacy-path`. VMs whose gateway-mode config holds placeholder tokens
 need the real `xoxb-`/`xapp-` tokens in the conf first; it refuses before
-touching anything otherwise. A home with several channel workspaces or custom
-policies (accord-agent, for example) is migrated by hand, keeping its
-workspace directory at the same path.
+touching anything otherwise. A home with several channel workspaces is migrated by hand, keeping each
+workspace directory at the same path. A single restricted-policy workspace
+migrates the same way as a full one; the restricted `.claude/settings.json` is
+regenerated from the template on the fresh install.
 
 ## Rules
 
@@ -113,8 +122,12 @@ workspace directory at the same path.
 - Do not run `enso setup` interactively; `install.sh` does the equivalent.
 - Do not commit `agent.conf` (it is gitignored) or copy it into a workspace.
 - More channels for the same workspace: add them to `CHANNELS` and re-run.
-  A second workspace, a restricted policy, or jobs are post-install work; use
-  the bundled `enso-workspace`, `enso-config` and `enso-jobs` skills.
+  A restricted channel workspace is a conf choice, not post-install work: set
+  `WORKSPACE_POLICY=restricted` (with optional `RESTRICTED_ALLOW_DOMAINS` and
+  `RESTRICTED_DENY_WRITE`) and re-run; the sandbox `settings.json` regenerates
+  from `templates/settings.restricted.json.tmpl` on every run. A second
+  workspace or jobs are still post-install work; use the bundled
+  `enso-workspace`, `enso-config` and `enso-jobs` skills.
 - Upgrades after install go through enso itself: `enso update check`, then
   `enso update apply` (snapshotted, rolls back on failure). The nightly
   `default:enso-update` job announces new releases.

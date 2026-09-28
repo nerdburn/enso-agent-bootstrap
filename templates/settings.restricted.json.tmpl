@@ -1,0 +1,124 @@
+{
+  "disableAllHooks": true,
+  "env": {
+    "ENSO_SLACK_API_BASE_URL": "https://__VM_NAME__.int.exe.xyz/api/"
+  },
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Write",
+      "mcp__lore__lore_doc_add",
+      "mcp__lore__lore_grep",
+      "mcp__lore__lore_read",
+      "mcp__lore__lore_recall",
+      "mcp__lore__lore_remember",
+      "mcp__lore__lore_source_add",
+      "mcp__lore__lore_source_list",
+      "mcp__lore__lore_sow_add",
+      "mcp__lore__lore_status",
+      "mcp__lore__lore_sync_now",
+      "mcp__lore__lore_work_add",
+      "mcp__lore__lore_work_comment",
+      "mcp__lore__lore_work_label",
+      "mcp__lore__lore_work_move",
+      "mcp__lore__lore_work_promote",
+      "mcp__lore__lore_work_push",
+      "mcp__lore__lore_work_set"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(su *)",
+      "Bash(ssh *)",
+      "Bash(docker *)",
+      "Bash(gh *)",
+      "Bash(vercel *)",
+      "Bash(git push *)",
+      "Bash(git remote set-url *)",
+      "Bash(git config --global *)",
+      "Edit(AGENTS.md)",
+      "Edit(CLAUDE.md)",
+      "Edit(.agents/**)",
+      "Edit(.claude/**)",
+      "Edit(skills/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/**)",
+      "Read(~/.local/share/com.vercel.cli/**)",
+      "Read(~/.enso/enso.db)",
+      "Read(~/.enso/secrets/**)",
+      "Read(~/.enso/policies/**)",
+      "Read(~/.enso/jobs/**)",
+      "Read(~/.enso/workspaces/default/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.claude/**)",
+      "Read(~/.enso/config.json)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "127.0.0.1",
+        "llm.int.exe.xyz",
+        "github.com",
+        "api.github.com",
+        "raw.githubusercontent.com",
+        "objects.githubusercontent.com",
+        "codeload.github.com",
+        "registry.npmjs.org",
+        "npmjs.com",
+        "pnpm.io",
+        "binaries.prisma.sh",
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
+        "__VM_NAME__.int.exe.xyz"
+      ],
+      "strictAllowlist": true
+    },
+    "filesystem": {
+      "allowWrite": [
+        "__WORKSPACE_ABS__",
+        "__HOME__/.local/share/pnpm/store"
+      ],
+      "denyRead": [
+        "__HOME__/.ssh",
+        "__HOME__/.aws",
+        "__HOME__/.config",
+        "__HOME__/.local/share/com.vercel.cli",
+        "__HOME__/.enso/enso.db",
+        "__HOME__/.enso/secrets",
+        "__HOME__/.enso/policies",
+        "__HOME__/.enso/jobs",
+        "__HOME__/.enso/workspaces/default",
+        "__HOME__/.claude.json",
+        "__HOME__/.claude",
+        "__HOME__/.enso/config.json"
+      ],
+      "denyWrite": [
+        "__WORKSPACE_ABS__/AGENTS.md",
+        "__WORKSPACE_ABS__/CLAUDE.md",
+        "__WORKSPACE_ABS__/.agents",
+        "__WORKSPACE_ABS__/.claude",
+        "__WORKSPACE_ABS__/skills",
+        "__HOME__/.claude.json",
+        "__HOME__/.claude"
+      ]
+    },
+    "credentials": {
+      "envVars": [
+        {"name": "OP_SERVICE_ACCOUNT_TOKEN", "mode": "deny"},
+        {"name": "SLACK_BOT_TOKEN", "mode": "deny"},
+        {"name": "SLACK_APP_TOKEN", "mode": "deny"},
+        {"name": "GH_TOKEN", "mode": "deny"},
+        {"name": "GITHUB_TOKEN", "mode": "deny"},
+        {"name": "VERCEL_TOKEN", "mode": "deny"}
+      ]
+    }
+  }
+}
