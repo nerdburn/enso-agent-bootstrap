@@ -285,29 +285,47 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
     if policy == "restricted":
         # Render the sandbox policy from the committed template. Source of truth
         # is this repo, so we always regenerate — a lore-tool change flows out
-        # by re-running install.sh.
+        # by re-running install.sh. When PROJECT_DIR is set, the checkout gets
+        # the same treatment as the full-access house setup (--add-dir + write
+        # access) so restricted agents can do software dev the same way; the
+        # rest of the sandbox (network, credentials, bash denies) stays.
         cc_settings = os.path.join(ws, ".claude", "settings.json")
         os.makedirs(os.path.dirname(cc_settings), exist_ok=True)
-        doc = render_restricted_settings(ws)
+        doc = render_restricted_settings(ws, project_dir=project)
         with open(cc_settings, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(doc, indent=2) + "\n")
         info(f"workspace {name}: wrote .claude/settings.json (restricted policy)")
 
+        claude_args = [
+            "--settings", cc_settings,
+            "--permission-mode", "dontAsk",
+            "--setting-sources", "project",
+            "--strict-mcp-config",
+            "--mcp-config", mcp_path,
+        ]
+        if project:
+            claude_args = ["--add-dir", project] + claude_args
         wjson = {
             "agent": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
-            "providers": {"claude": {"args": [
-                "--settings", cc_settings,
-                "--permission-mode", "dontAsk",
-                "--setting-sources", "project",
-                "--strict-mcp-config",
-                "--mcp-config", mcp_path,
-            ]}},
+            "providers": {"claude": {"args": claude_args}},
         }
         with open(settings_json, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(wjson, indent=2) + "\n")
         os.chmod(settings_json, 0o600)
-        info(f"workspace {name}: wrote workspace.json (restricted)")
+        info(f"workspace {name}: wrote workspace.json (restricted{', project ' + project if project else ''})")
         notes.append(f"   policy:   restricted (sandbox from templates/settings.restricted.json.tmpl)")
+
+        # Project definition so enso's task engine knows about the checkout.
+        if project:
+            projects = os.path.join(ws, "projects")
+            if not any(os.path.isfile(os.path.join(projects, d, "PROJECT.md")) for d in os.listdir(projects)):
+                key = re.sub(r"[^A-Z0-9]", "", name.upper())[:10] or "PROJ"
+                if not key[0].isalpha():
+                    key = "P" + key[:9]
+                os.makedirs(os.path.join(projects, key), exist_ok=True)
+                with open(os.path.join(projects, key, "PROJECT.md"), "w", encoding="utf-8") as fh:
+                    fh.write(f"---\nname: {name.replace('-', ' ').title()}\nstages:\n- work\nrepo: {project}\n---\n")
+                info(f"workspace {name}: project {key} → {project}")
         return notes
 
     # Full-access policy (abby/merrin house setup).
@@ -338,9 +356,12 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
     return notes
 
 
-def render_restricted_settings(workspace_dir: str) -> dict:
+def render_restricted_settings(workspace_dir: str, project_dir: str = "") -> dict:
     """Render templates/settings.restricted.json.tmpl for this workspace, then append
     per-conf extras (RESTRICTED_ALLOW_DOMAINS, RESTRICTED_DENY_WRITE).
+
+    If project_dir is set, it is added to sandbox.filesystem.allowWrite so
+    Claude can operate on the checkout the same way full-access agents do.
 
     A RESTRICTED_DENY_WRITE path that lives under the workspace root is also
     mirrored into permissions.deny as an Edit(<relative-path>) rule — belt and
@@ -356,6 +377,8 @@ def render_restricted_settings(workspace_dir: str) -> dict:
         .replace("__HOME__", os.path.expanduser("~"))
     )
     doc = json.loads(raw)
+    if project_dir and project_dir not in doc["sandbox"]["filesystem"]["allowWrite"]:
+        doc["sandbox"]["filesystem"]["allowWrite"].append(project_dir)
     for dom in split_list(env("RESTRICTED_ALLOW_DOMAINS")):
         if dom not in doc["sandbox"]["network"]["allowedDomains"]:
             doc["sandbox"]["network"]["allowedDomains"].append(dom)
