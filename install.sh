@@ -15,7 +15,7 @@
 #
 # What a full run does:
 #   1. apt + Node, timezone, git identity
-#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, lore
+#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, lore
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -84,7 +84,7 @@ CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-}"
 CLAUDE_AUTH="${CLAUDE_AUTH:-subscription}"
 GH_TOKEN="${GH_TOKEN:-}"; VERCEL_TOKEN="${VERCEL_TOKEN:-}"
 CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"; CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
-HEROKU_API_KEY="${HEROKU_API_KEY:-}"
+HEROKU_API_KEY="${HEROKU_API_KEY:-}"; NEON_API_KEY="${NEON_API_KEY:-}"
 GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS:-}"
 PROJECT_REPO="${PROJECT_REPO:-}"
 PROJECT_DIR="${PROJECT_DIR:-${PROJECT_REPO:+$HOME/apps/${PROJECT_REPO##*/}}}"
@@ -186,6 +186,7 @@ fi
 NPM_GLOBAL=()
 have vercel   || NPM_GLOBAL+=(vercel)
 have wrangler || NPM_GLOBAL+=(wrangler)
+have neonctl  || NPM_GLOBAL+=(neonctl)
 if [ ${#NPM_GLOBAL[@]} -gt 0 ]; then
   info "npm install -g ${NPM_GLOBAL[*]}"
   sudo npm install -g --no-fund --no-audit "${NPM_GLOBAL[@]}" >/dev/null
@@ -209,7 +210,7 @@ if ! have lore || [ "$(cat "$LORE_DIR/.installed-rev" 2>/dev/null)" != "$LORE_HE
 fi
 info "lore $(lore --version 2>/dev/null || echo '?')"
 
-for t in claude codex gh vercel wrangler heroku lore; do
+for t in claude codex gh vercel wrangler heroku neonctl lore; do
   have "$t" && info "✓ $t → $(command -v "$t")" || warn "$t missing"
 done
 
@@ -399,6 +400,7 @@ CLAUDE_LOGIN_NEEDED=false
   [ -n "$CLOUDFLARE_API_TOKEN" ]  && echo "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN"
   [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID"
   [ -n "$HEROKU_API_KEY" ]        && echo "HEROKU_API_KEY=$HEROKU_API_KEY"
+  [ -n "$NEON_API_KEY" ]          && echo "NEON_API_KEY=$NEON_API_KEY"
   true
 } > "$AGENT_ENV"
 chmod 600 "$AGENT_ENV"

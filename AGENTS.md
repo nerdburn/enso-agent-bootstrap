@@ -23,7 +23,7 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
     `--permission-mode dontAsk --setting-sources project` and no shell/deploy
     access.
   GitHub through exe.dev integrations at `github.int.exe.xyz` with a `gh`
-  wrapper; `vercel`, `wrangler`, `heroku`, `lore` + its skills; house
+  wrapper; `vercel`, `wrangler`, `heroku`, `neonctl`, `lore` + its skills; house
   instructions in `~/.enso/AGENTS.md`; an operator knowledge note.
 - `install.sh` is idempotent. Re-running is always safe; an existing
   `config.json` is only extended (missing bindings, changed tokens), never replaced.
@@ -32,7 +32,7 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
 
 1. **Check the first-boot install.** If the VM was created by
    `bootstrap.sh new-vm`, tools were pre-installed at boot; confirm with
-   `tail ~/enso-agent-bootstrap.log` and `which claude gh vercel wrangler heroku lore enso`.
+   `tail ~/enso-agent-bootstrap.log` and `which claude gh vercel wrangler heroku neonctl lore enso`.
    Otherwise run `./install.sh --tools-only` (a few minutes: it builds lore).
    If `~/.enso` already holds an older enso (the 2.x fork or ≤1.x), see
    **Migrating** below instead.

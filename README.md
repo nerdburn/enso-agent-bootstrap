@@ -5,13 +5,13 @@ Turn a fresh [exe.dev](https://exe.dev) VM into a configured
 abby-agent runs: Claude Code behind a Slack bot, a full-access channel
 workspace with the project checkout and [lore](https://github.com/nerdburn/lore)
 project memory, GitHub through exe.dev integrations, and the house toolkit
-(`gh`, `vercel`, `wrangler`, `heroku`, `lore`). One command per agent.
+(`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `lore`). One command per agent.
 
 ```
 laptop                                     exe.dev VM (<name>-agent.exe.xyz)
 ────────────────────────────────           ─────────────────────────────────────────────
 setup.sh        → ace.conf                 install.sh   (idempotent; the whole VM side)
-bootstrap.sh    manifest | up | …   ssh →  ├─ CLIs: claude gh(+wrapper) vercel wrangler heroku lore
+bootstrap.sh    manifest | up | …   ssh →  ├─ CLIs: claude gh(+wrapper) vercel wrangler heroku neonctl lore
   integrations: lore-mcp, GitHub → vm      ├─ enso 0.4 managed release → ~/.local/bin/enso
                                            ├─ ~/.enso: config.json, default + channel workspace
                                            ├─ house AGENTS.md, operator note, lore skills
@@ -76,7 +76,7 @@ Values that are the same for every agent live once in
 non-empty wins. Keep Slack tokens out of it.
 
 ```bash
-VERCEL_TOKEN="…"; CLOUDFLARE_API_TOKEN="…"; CLOUDFLARE_ACCOUNT_ID="…"; HEROKU_API_KEY="…"
+VERCEL_TOKEN="…"; CLOUDFLARE_API_TOKEN="…"; CLOUDFLARE_ACCOUNT_ID="…"; HEROKU_API_KEY="…"; NEON_API_KEY="…"
 LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 TIMEZONE="America/Vancouver"
 OPERATOR_NAME="Shawn Adrian"

@@ -87,6 +87,7 @@ VERCEL_TOKEN=""
 CLOUDFLARE_API_TOKEN=""
 CLOUDFLARE_ACCOUNT_ID=""
 HEROKU_API_KEY=""
+NEON_API_KEY=""                  # neonctl (Neon personal API key, napi_…)
 
 # ── lore project memory ──────────────────────────────────────────────────
 # The project's lore context (e.g. lore-merrin). The channel workspace reaches
