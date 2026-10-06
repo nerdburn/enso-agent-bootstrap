@@ -67,8 +67,9 @@ RESTRICTED_DENY_WRITE=""         # e.g. "/home/exedev/accord-ops /home/exedev/.e
 # exe.dev GitHub integrations to attach to this VM (bootstrap.sh integrations).
 # Credentials stay at the exe.dev edge: git and gh go through
 # https://github.int.exe.xyz, and only the attached repos are reachable.
-# A team integration is attached by giving the VM its client tag. Never tag an
-# agent VM `lore`: that hands it every client's integrations.
+# Create them as personal (not --team) integrations: they attach to
+# vm:<agent>, plus tag:lore for lore-host's sync. Never tag an agent VM
+# `lore`: that hands it every client's integrations.
 GITHUB_INTEGRATIONS=""           # e.g. "inputlogic-merrin"
 PROJECT_REPO=""                  # e.g. "inputlogic/merrin" → cloned to ~/apps/merrin
 

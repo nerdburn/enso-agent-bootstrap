@@ -94,13 +94,9 @@ attach() {  # attach <integration>
   if printf '%s' "$line" | grep -qE "(^| )vm:${VM_NAME}( |$)"; then
     log "integration $1 already attached to vm:$VM_NAME"
   elif printf '%s' "$line" | grep -q '(team)'; then
-    # Team integrations attach only by tag: give the VM the integration's own
-    # client tag (e.g. inputlogic-merrin), never the shared `lore` tag.
-    local tag
-    tag="$(printf '%s' "$line" | grep -oE 'tag:[A-Za-z0-9_-]+' | sed 's/^tag://' | grep -vx lore | head -1)"
-    [ -n "$tag" ] || { echo "  ! team integration '$1' has no client tag to join (only tag:lore); attach it by hand" >&2; return 0; }
-    log "team integration $1: tagging $VM_NAME '$tag'"
-    ssh exe.dev tag "$VM_NAME" "$tag"
+    # Team integrations attach only by tag. Recreate it as a personal one
+    # attached vm:<agent> + tag:lore, like every other client repo.
+    echo "  ! '$1' is a team integration; recreate it without --team (see README) and re-run" >&2; return 0
   else
     log "attaching integration $1 → vm:$VM_NAME"
     ssh exe.dev integrations attach "$1" "vm:$VM_NAME"

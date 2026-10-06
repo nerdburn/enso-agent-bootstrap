@@ -63,7 +63,7 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
    `./bootstrap.sh integrations <conf>` from the repo on their laptop, or:
    ```
    ssh exe.dev integrations attach lore-mcp vm:<vm-name>
-   ssh exe.dev integrations attach <github-integration> vm:<vm-name>   # team integration: ssh exe.dev tag <vm-name> <its client tag>
+   ssh exe.dev integrations attach <github-integration> vm:<vm-name>   # personal integrations only, never --team
    ```
    Never tag an agent VM `lore`: that tag carries every client's integrations.
    Verify from here: `curl -s -o /dev/null -w '%{http_code}' https://lore-mcp.int.exe.xyz/mcp/<context>`
