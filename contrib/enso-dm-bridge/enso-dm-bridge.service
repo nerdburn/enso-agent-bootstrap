@@ -1,0 +1,9 @@
+[Unit]
+Description=enso-dm-bridge: heads-up for the owner's own unread Slack DMs
+After=network-online.target
+
+[Service]
+Type=oneshot
+# All bridge config (user token, owner id, the agent's xoxb- notify token) lives here.
+EnvironmentFile=%h/.config/enso-agent/dm-bridge.env
+ExecStart=/usr/bin/env python3 %h/apps/enso-agent-bootstrap/contrib/enso-dm-bridge/bridge.py
