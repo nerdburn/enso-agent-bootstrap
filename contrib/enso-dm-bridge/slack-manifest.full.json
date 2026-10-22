@@ -1,6 +1,7 @@
 {
+  "_comment": "Full Slack app manifest = the standard enso agent manifest (lib/slack-manifest.json) PLUS the enso-dm-bridge additions (user scopes + OAuth redirect). Replace __AGENT_NAME__ with the agent's existing Slack display name BEFORE pasting, or it will rename the app. Paste over the agent's whole manifest at api.slack.com/apps -> <app> -> App Manifest. Adding user scopes does not rotate the xoxb- bot token or drop socket mode. Prefer slack-app-additions.json (a surgical merge) if you'd rather not replace the whole thing.",
   "display_information": {
-    "name": "dorian",
+    "name": "__AGENT_NAME__",
     "description": "Chat with the agent CLIs on your machine from Slack.",
     "background_color": "#000000"
   },
@@ -11,7 +12,7 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "dorian",
+      "display_name": "__AGENT_NAME__",
       "always_online": true
     }
   },

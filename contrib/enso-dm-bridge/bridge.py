@@ -3,7 +3,7 @@
 
 Reads the owner's direct + group DMs with the owner's **user token** (xoxp-),
 finds messages that arrived since the last run, and posts a single private
-digest to the owner via the dorian bot token (xoxb-). Nothing is stored except
+digest to the owner via the agent's bot token (xoxb-). Nothing is stored except
 a per-conversation "last seen" timestamp cursor.
 
 This only ever touches the owner's own conversations — the ones a person reads
@@ -11,8 +11,8 @@ in their own Slack client. It is a triage aid for that one person's inbox, run
 with that person's own authorization.
 
 Env (loaded from ~/.config/enso-agent/dm-bridge.env by the systemd unit):
-  DM_BRIDGE_USER_TOKEN       xoxp- token Hank authorized (see oauth.py)   [required]
-  DM_BRIDGE_OWNER_ID         Hank's Slack user id, e.g. U05D4PSP08Z        [required]
+  DM_BRIDGE_USER_TOKEN       xoxp- token the owner authorized (see oauth.py)   [required]
+  DM_BRIDGE_OWNER_ID         the owner's Slack user id, e.g. U0XXXXXXXXX        [required]
   DM_BRIDGE_NOTIFY_TOKEN     xoxb- bot token used to DM the heads-up       [required]
   DM_BRIDGE_VIP_IDS          comma-sep user ids to flag as priority        [optional]
   DM_BRIDGE_KEYWORDS         comma-sep words that mark a msg urgent         [optional]

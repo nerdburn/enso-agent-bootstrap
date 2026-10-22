@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """One-shot OAuth helper for the enso-dm-bridge app.
 
-The bridge reads Hank's *own* DMs, so it needs a Slack **user token** (xoxp-)
-that Hank authorizes in his browser. Only he can grant it; this script just
+The bridge reads the owner's *own* DMs, so it needs a Slack **user token** (xoxp-)
+that the owner authorizes in their browser. Only they can grant it; this script just
 builds the consent URL and exchanges the short-lived code Slack hands back.
 
 Flow (no public web server needed):
 
   1. On the VM:   python3 oauth.py url
-     -> prints the authorize URL. Send it to Hank.
+     -> prints the authorize URL. Send it to the owner.
 
-  2. Hank opens it, approves. His browser lands on the redirect
+  2. The owner opens it, approves. Their browser lands on the redirect
      (https://localhost/dm-bridge/oauth?code=...&state=...). The page won't
      load — that's fine — the `code` is right there in the address bar.
      He copies the whole URL (or just the code=... value) back to you.
@@ -102,11 +102,21 @@ def exchange(code: str) -> None:
         die(f"Slack refused the exchange: {payload.get('error', 'unknown error')}")
     user = payload.get("authed_user") or {}
     token = user.get("access_token", "")
+    uid = user.get("id", "?")
     if not token.startswith("xoxp-"):
         die("Slack did not return a user token (xoxp-); check the app has user scopes, not bot scopes")
-    _append_token(token, user.get("id", "?"))
-    print(f"ok: stored user token for {user.get('id', '?')} in {ENV_PATH} (value not shown)")
-    print("next: set DM_BRIDGE_OWNER_ID to that same user id, then start the timer.")
+    # Consent check: the token must belong to the configured owner. Slack reports
+    # the authorizing user's id here, so a mismatch means someone other than the
+    # owner approved — refuse rather than wire the bridge to the wrong inbox.
+    owner = os.environ.get("DM_BRIDGE_OWNER_ID", "").strip()
+    if not owner:
+        die("DM_BRIDGE_OWNER_ID is not set; set it to the owner's user id before exchanging")
+    if uid != owner:
+        die(f"authorizing user ({uid}) is not DM_BRIDGE_OWNER_ID ({owner}); not storing. "
+            "The owner named in the config must be the one who approves the consent screen.")
+    _append_token(token, uid)
+    print(f"ok: stored user token for {uid} in {ENV_PATH} (value not shown)")
+    print("next: set DM_BRIDGE_NOTIFY_TOKEN (the bot xoxb-), then start the timer.")
 
 
 def _append_token(token: str, uid: str) -> None:
@@ -130,7 +140,7 @@ def main() -> None:
         print(build_url())
     else:
         if len(sys.argv) < 3:
-            die("exchange needs the redirect URL or code Hank sent back")
+            die("exchange needs the redirect URL or code the owner sent back")
         exchange(extract_code(sys.argv[2]))
 
 
