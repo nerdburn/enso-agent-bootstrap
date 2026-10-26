@@ -75,7 +75,7 @@ fi
 # ── Code ────────────────────────────────────────────────────────────────────
 echo
 prompt GITHUB_INTEGRATIONS "exe.dev GitHub integration(s)" "" "Names from 'ssh exe.dev integrations list', attached to this VM only (e.g. inputlogic-merrin). Blank = none"
-prompt PROJECT_REPO "Project repo to check out" "" "owner/repo, cloned via github.int.exe.xyz into ~/apps (e.g. inputlogic/merrin). Blank = none"
+prompt PROJECT_REPOS "Project repo(s) to check out" "" "owner/repo, space-separated for several (frontend + backend), each cloned into ~/apps (e.g. inputlogic/merrin). Blank = none"
 
 # ── Claude ──────────────────────────────────────────────────────────────────
 echo
@@ -118,7 +118,7 @@ CHANNELS="${CHANNELS}"
 CHANNEL_WORKSPACE="${CHANNEL_WORKSPACE}"
 
 GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS}"
-PROJECT_REPO="${PROJECT_REPO}"
+PROJECT_REPOS="${PROJECT_REPOS}"
 
 CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN}"
 

@@ -5,13 +5,13 @@ Turn a fresh [exe.dev](https://exe.dev) VM into a configured
 abby-agent runs: Claude Code behind a Slack bot, a full-access channel
 workspace with the project checkout and [lore](https://github.com/nerdburn/lore)
 project memory, GitHub through exe.dev integrations, and the house toolkit
-(`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `lore`). One command per agent.
+(`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore`). One command per agent.
 
 ```
 laptop                                     exe.dev VM (<name>-agent.exe.xyz)
 ────────────────────────────────           ─────────────────────────────────────────────
 setup.sh        → ace.conf                 install.sh   (idempotent; the whole VM side)
-bootstrap.sh    manifest | up | …   ssh →  ├─ CLIs: claude gh(+wrapper) vercel wrangler heroku neonctl lore
+bootstrap.sh    manifest | up | …   ssh →  ├─ CLIs: claude gh(+wrapper) vercel wrangler heroku neonctl sanity lore
   integrations: lore-mcp, GitHub → vm      ├─ enso 0.4 managed release → ~/.local/bin/enso
                                            ├─ ~/.enso: config.json, default + channel workspace
                                            ├─ house AGENTS.md, operator note, lore skills
@@ -54,10 +54,10 @@ cp agent.conf.example agent.conf && chmod 600 agent.conf && $EDITOR agent.conf
 | Piece | What |
 | --- | --- |
 | enso | Official managed release (`ENSO_VERSION`, default 0.4.0): runtime in `~/.enso/runtime`, launcher `~/.local/bin/enso`, `enso.service` (user unit, linger). Later upgrades: `enso update apply`, announced nightly by `default:enso-update`. |
-| Slack | Tokens in `~/.enso/config.json` (mode 600). `mention_required: true`, `thread_mention_required: false`. The manifest is enso's own plus `channels:join`, so the bot joins public channels itself. |
+| Slack | Tokens in `~/.enso/config.json` (mode 600). `mention_required: true`, `thread_mention_required: true` (enforced on every run: the agent answers in a thread only when @mentioned there). The manifest is enso's own plus `channels:join`, so the bot joins public channels itself. |
 | Bindings | `slack:dm:<owner>` → `default` (operator workspace, unrestricted); every `CHANNELS` entry → `CHANNEL_WORKSPACE`. |
 | Channel workspace | `WORKSPACE_POLICY=full` (the default, like `#merrin`): `workspace.json` gives Claude `--add-dir <checkout> --dangerously-skip-permissions --strict-mcp-config --mcp-config .claude/mcp.json`; `mcp.json` holds only lore over HTTP (`https://lore-mcp.int.exe.xyz/mcp/<context>`); a `PROJECT.md` points enso's task engine at the checkout. `WORKSPACE_POLICY=restricted` (like `#jointly-team`): `.claude/settings.json` is rendered from `templates/settings.restricted.json.tmpl` — strict permission allowlist (lore MCP tools only), sandbox with network + filesystem denies, credential env vars denied; `workspace.json` runs Claude with `--settings … --permission-mode dontAsk --setting-sources project`, no `--add-dir`, no `--dangerously-skip-permissions`. Per-agent extras via `RESTRICTED_ALLOW_DOMAINS` and `RESTRICTED_DENY_WRITE`. |
-| GitHub | exe.dev integrations attached to this VM only (`GITHUB_INTEGRATIONS`; personal, not `--team`, integrations: `ssh exe.dev integrations add github --name=inputlogic-<repo> --repository=inputlogic/<repo> --attach=vm:<vm> --attach=tag:lore`). git and gh use `github.int.exe.xyz`; `~/.local/bin/gh` sets `GH_HOST`. The git identity is the exe.dev integration bot. |
+| GitHub | exe.dev integrations attached to this VM only (`GITHUB_INTEGRATIONS`; personal, not `--team`, integrations: `ssh exe.dev integrations add github --name=inputlogic-<repo> --repository=inputlogic/<repo> --attach=vm:<vm> --attach=tag:lore`). git and gh use `github.int.exe.xyz`; `~/.local/bin/gh` sets `GH_HOST`. The git identity is the exe.dev integration bot. `PROJECT_REPOS` lists the checkouts (one integration per repo). Where the client's org has no exe.dev GitHub App, leave `GITHUB_INTEGRATIONS` blank and set `GH_TOKEN` (fine-grained, limited to those repos): git and gh then use github.com. |
 | lore | Channel workspace: HTTP via the `lore-mcp` integration (no SSH key). Admin agent: stdio `lore mcp` + the lore CLI, which need the VM's key registered with `ssh exe.dev ssh-key add --tag=lore`. Skills `lore-mcp` and `lore-onboard` are installed in `~/.enso/skills`. |
 | Instructions | Home `AGENTS.md` names the agent and adds the house section (identity, operator, lore, thread discipline, tools, software development); `default` gets operator-workspace instructions; `shared/knowledge/People/<operator>.md` records the operator. |
 | Credentials | Claude on the subscription (`claude setup-token` in the conf, or `/login` on the VM). Tool tokens go to `~/.config/enso-agent/env`, loaded by `enso.service.d/10-agent-env.conf` (enso 0.4 no longer reads `secrets/*.env`). |

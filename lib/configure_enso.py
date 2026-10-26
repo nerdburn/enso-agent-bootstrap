@@ -23,7 +23,7 @@ validates every change.
 
 Inputs (environment, exported by install.sh): AGENT_NAME, VM_NAME, ENSO_BIN,
 ENSO_HOME, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_OWNER_IDS, DM_WORKSPACE, NOTIFY_CHANNEL,
-CHANNELS, CHANNEL_WORKSPACE, LORE_CONTEXT, LORE_MCP_URL, PROJECT_DIR,
+CHANNELS, CHANNEL_WORKSPACE, LORE_CONTEXT, LORE_MCP_URL, PROJECT_DIRS,
 DEFAULT_MODEL, DEFAULT_EFFORT, AGENT_TIMEOUT, WEB_PORT, OPERATOR_NAME,
 WORKSPACE_TEMPLATE, REPORT (file collecting summary lines).
 """
@@ -229,12 +229,12 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
             text = fh.read()
         listing = "\n".join(f"- `#{ch['name']}` (`{ch['id']}`)" for ch in channels) or "- (none resolved yet)"
         owners = split_list(env("SLACK_OWNER_IDS"))
-        project = env("PROJECT_DIR")
+        project_dirs = split_list(env("PROJECT_DIRS"))
         text = (
             text.replace("__AGENT_NAME__", env("AGENT_NAME", "the agent"))
             .replace("__CHANNEL_LIST__", listing)
             .replace("__OPERATOR__", f"{env('OPERATOR_NAME') or 'The operator'} (`{owners[0]}`)" if owners else "The operator")
-            .replace("__PROJECT_LINE__", f"inspect or edit `{project}`, " if project else "")
+            .replace("__PROJECT_LINE__", "inspect or edit " + ", ".join(f"`{p}`" for p in project_dirs) + ", " if project_dirs else "")
             .replace("__LORE_CONTEXT__", env("LORE_CONTEXT") or "(none attached)")
         )
         if not env("LORE_CONTEXT"):
@@ -280,18 +280,19 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
         notes.append(f"   lore:     context '{context}' → workspace '{name}' via {url}")
 
     settings_json = os.path.join(ws, "workspace.json")
-    project = env("PROJECT_DIR")
+    project_dirs = split_list(env("PROJECT_DIRS"))
+    add_dirs = [a for p in project_dirs for a in ("--add-dir", p)]
 
     if policy == "restricted":
         # Render the sandbox policy from the committed template. Source of truth
         # is this repo, so we always regenerate — a lore-tool change flows out
-        # by re-running install.sh. When PROJECT_DIR is set, the checkout gets
+        # by re-running install.sh. Project checkouts (PROJECT_DIRS) get
         # the same treatment as the full-access house setup (--add-dir + write
         # access) so restricted agents can do software dev the same way; the
         # rest of the sandbox (network, credentials, bash denies) stays.
         cc_settings = os.path.join(ws, ".claude", "settings.json")
         os.makedirs(os.path.dirname(cc_settings), exist_ok=True)
-        doc = render_restricted_settings(ws, project_dir=project)
+        doc = render_restricted_settings(ws, project_dirs=project_dirs)
         with open(cc_settings, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(doc, indent=2) + "\n")
         info(f"workspace {name}: wrote .claude/settings.json (restricted policy)")
@@ -303,8 +304,7 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
             "--strict-mcp-config",
             "--mcp-config", mcp_path,
         ]
-        if project:
-            claude_args = ["--add-dir", project] + claude_args
+        claude_args = add_dirs + claude_args
         wjson = {
             "agent": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
             "providers": {"claude": {"args": claude_args}},
@@ -312,27 +312,29 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
         with open(settings_json, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(wjson, indent=2) + "\n")
         os.chmod(settings_json, 0o600)
-        info(f"workspace {name}: wrote workspace.json (restricted{', project ' + project if project else ''})")
+        info(f"workspace {name}: wrote workspace.json (restricted{', projects ' + ' '.join(project_dirs) if project_dirs else ''})")
         notes.append(f"   policy:   restricted (sandbox from templates/settings.restricted.json.tmpl)")
 
-        # Project definition so enso's task engine knows about the checkout.
-        if project:
-            projects = os.path.join(ws, "projects")
-            if not any(os.path.isfile(os.path.join(projects, d, "PROJECT.md")) for d in os.listdir(projects)):
-                key = re.sub(r"[^A-Z0-9]", "", name.upper())[:10] or "PROJ"
-                if not key[0].isalpha():
-                    key = "P" + key[:9]
-                os.makedirs(os.path.join(projects, key), exist_ok=True)
-                with open(os.path.join(projects, key, "PROJECT.md"), "w", encoding="utf-8") as fh:
-                    fh.write(f"---\nname: {name.replace('-', ' ').title()}\nstages:\n- work\nrepo: {project}\n---\n")
-                info(f"workspace {name}: project {key} → {project}")
+        ensure_projects(ws, name, project_dirs)
         return notes
 
     # Full-access policy (abby/merrin house setup).
     if os.path.exists(settings_json):
-        info(f"workspace {name}: workspace.json exists; left alone")
-    elif project or mcp_args:
-        args = (["--add-dir", project] if project else []) + ["--dangerously-skip-permissions"] + mcp_args
+        # Left alone apart from adding checkouts it doesn't --add-dir yet.
+        with open(settings_json, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        args = doc.setdefault("providers", {}).setdefault("claude", {}).setdefault("args", [])
+        have = {args[i + 1] for i, a in enumerate(args[:-1]) if a == "--add-dir"}
+        new = [p for p in project_dirs if p not in have]
+        if new:
+            args[:0] = [a for p in new for a in ("--add-dir", p)]
+            with open(settings_json, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(doc, indent=2) + "\n")
+            info(f"workspace {name}: workspace.json += --add-dir {' '.join(new)}")
+        else:
+            info(f"workspace {name}: workspace.json exists; left alone")
+    elif project_dirs or mcp_args:
+        args = add_dirs + ["--dangerously-skip-permissions"] + mcp_args
         doc = {
             "agent": {"provider": "claude", "model": env("DEFAULT_MODEL", "opus"), "effort": env("DEFAULT_EFFORT", "high")},
             "providers": {"claude": {"args": args}},
@@ -340,28 +342,58 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
         fd = os.open(settings_json, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(doc, indent=2) + "\n")
-        info(f"workspace {name}: wrote workspace.json (full access{', project ' + project if project else ''})")
+        info(f"workspace {name}: wrote workspace.json (full access{', projects ' + ' '.join(project_dirs) if project_dirs else ''})")
 
-    # Project definition for the checkout, so enso tasks/worktrees know it.
-    if project:
-        projects = os.path.join(ws, "projects")
-        if not any(os.path.isfile(os.path.join(projects, d, "PROJECT.md")) for d in os.listdir(projects)):
-            key = re.sub(r"[^A-Z0-9]", "", name.upper())[:10] or "PROJ"
-            if not key[0].isalpha():
-                key = "P" + key[:9]
-            os.makedirs(os.path.join(projects, key), exist_ok=True)
-            with open(os.path.join(projects, key, "PROJECT.md"), "w", encoding="utf-8") as fh:
-                fh.write(f"---\nname: {name.replace('-', ' ').title()}\nstages:\n- work\nrepo: {project}\n---\n")
-            info(f"workspace {name}: project {key} → {project}")
+    ensure_projects(ws, name, project_dirs)
     return notes
 
 
-def render_restricted_settings(workspace_dir: str, project_dir: str = "") -> dict:
+def project_key(text: str) -> str:
+    key = re.sub(r"[^A-Z0-9]", "", text.upper())[:10] or "PROJ"
+    return key if key[0].isalpha() else "P" + key[:9]
+
+
+def ensure_projects(ws: str, name: str, project_dirs: list[str]) -> None:
+    """One enso project per checkout, so tasks/worktrees know them. A checkout
+    some PROJECT.md already points at (by `repo:`) is left alone. A single
+    checkout is keyed by the workspace name, as before; several are keyed by
+    repo name (permissionslip-app → PERMISSAPP)."""
+    projects = os.path.join(ws, "projects")
+    os.makedirs(projects, exist_ok=True)
+    known = set()
+    for d in os.listdir(projects):
+        md = os.path.join(projects, d, "PROJECT.md")
+        if os.path.isfile(md):
+            with open(md, encoding="utf-8") as fh:
+                m = re.search(r"^repo:\s*(\S+)", fh.read(), re.M)
+            known.add(m.group(1) if m else d)
+    if len(project_dirs) == 1 and not os.listdir(projects):
+        todo = [(project_key(name), name.replace("-", " ").title(), project_dirs[0])]
+    else:
+        todo = []
+        for p in project_dirs:
+            base = os.path.basename(p.rstrip("/"))
+            parts = [x for x in re.split(r"[-_.]", base) if x]
+            key = project_key(parts[0][:6] + parts[-1][:4] if len(parts) > 1 else base)
+            todo.append((key, base.replace("-", " ").title(), p))
+    for key, title, path in todo:
+        if path in known:
+            continue
+        n, k = 2, key
+        while os.path.exists(os.path.join(projects, k)):
+            k, n = key[:9] + str(n), n + 1
+        os.makedirs(os.path.join(projects, k))
+        with open(os.path.join(projects, k, "PROJECT.md"), "w", encoding="utf-8") as fh:
+            fh.write(f"---\nname: {title}\nstages:\n- work\nrepo: {path}\n---\n")
+        info(f"workspace {name}: project {k} → {path}")
+
+
+def render_restricted_settings(workspace_dir: str, project_dirs: list[str] | None = None) -> dict:
     """Render templates/settings.restricted.json.tmpl for this workspace, then append
     per-conf extras (RESTRICTED_ALLOW_DOMAINS, RESTRICTED_DENY_WRITE).
 
-    If project_dir is set, it is added to sandbox.filesystem.allowWrite so
-    Claude can operate on the checkout the same way full-access agents do.
+    Each of project_dirs is added to sandbox.filesystem.allowWrite so Claude
+    can operate on the checkouts the same way full-access agents do.
 
     A RESTRICTED_DENY_WRITE path that lives under the workspace root is also
     mirrored into permissions.deny as an Edit(<relative-path>) rule — belt and
@@ -377,8 +409,9 @@ def render_restricted_settings(workspace_dir: str, project_dir: str = "") -> dic
         .replace("__HOME__", os.path.expanduser("~"))
     )
     doc = json.loads(raw)
-    if project_dir and project_dir not in doc["sandbox"]["filesystem"]["allowWrite"]:
-        doc["sandbox"]["filesystem"]["allowWrite"].append(project_dir)
+    for p in project_dirs or []:
+        if p not in doc["sandbox"]["filesystem"]["allowWrite"]:
+            doc["sandbox"]["filesystem"]["allowWrite"].append(p)
     for dom in split_list(env("RESTRICTED_ALLOW_DOMAINS")):
         if dom not in doc["sandbox"]["network"]["allowedDomains"]:
             doc["sandbox"]["network"]["allowedDomains"].append(dom)
@@ -490,6 +523,11 @@ def main() -> None:
                 changed.append(key)
             elif have != ws:
                 warn(f"{key} is already bound to workspace {have!r}; left alone")
+        # Threads need an @mention too (house rule); older homes were left at false.
+        for field in ("mention_required", "thread_mention_required"):
+            if old_slack.get(field) is not True:
+                enso("config", "set", f"transports.slack.{field}", "true")
+                changed.append(f"transports.slack.{field}")
         for field, value in (("bot_token", env("SLACK_BOT_TOKEN")), ("app_token", env("SLACK_APP_TOKEN"))):
             if value and value != old_slack.get(field):
                 enso("config", "set", f"transports.slack.{field}", value)

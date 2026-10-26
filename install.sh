@@ -15,12 +15,12 @@
 #
 # What a full run does:
 #   1. apt + Node, timezone, git identity
-#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, lore
+#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
 #   4. tool tokens → ~/.config/enso-agent/env, loaded by the service
-#   5. project checkout (PROJECT_REPO, via github.int.exe.xyz)
+#   5. project checkouts (PROJECT_REPOS, via github.int.exe.xyz or GH_TOKEN)
 #   6. lib/configure_enso.py: Slack tokens checked, channels resolved/joined,
 #      full-access channel workspace with lore over the lore-mcp integration,
 #      config.json applied through `enso config apply` / `config set`
@@ -85,9 +85,16 @@ CLAUDE_AUTH="${CLAUDE_AUTH:-subscription}"
 GH_TOKEN="${GH_TOKEN:-}"; VERCEL_TOKEN="${VERCEL_TOKEN:-}"
 CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"; CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 HEROKU_API_KEY="${HEROKU_API_KEY:-}"; NEON_API_KEY="${NEON_API_KEY:-}"
+STRIPE_API_KEY="${STRIPE_API_KEY:-}"; REVENUECAT_API_KEY="${REVENUECAT_API_KEY:-}"
+SANITY_AUTH_TOKEN="${SANITY_AUTH_TOKEN:-}"
 GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS:-}"
-PROJECT_REPO="${PROJECT_REPO:-}"
-PROJECT_DIR="${PROJECT_DIR:-${PROJECT_REPO:+$HOME/apps/${PROJECT_REPO##*/}}}"
+# PROJECT_REPOS lists every checkout (e.g. a frontend and a backend repo);
+# PROJECT_REPO is the older single-repo name and still works.
+PROJECT_REPOS="$(echo "${PROJECT_REPOS:-${PROJECT_REPO:-}}" | tr ',' ' ')"
+PROJECT_DIRS=()   # filled by the checkout step: the clones that exist
+# GitHub host: the exe.dev integration, or github.com with GH_TOKEN when the
+# repo's org has no exe.dev GitHub App (e.g. a client org we can't install it on).
+if [ -z "$GITHUB_INTEGRATIONS" ] && [ -n "$GH_TOKEN" ]; then GIT_HOST=github.com; else GIT_HOST=github.int.exe.xyz; fi
 GH_BOT_EMAIL="267204973+exe-dev-github-integration[bot]@users.noreply.github.com"
 GIT_USER_NAME="${GIT_USER_NAME:-${AGENT_NAME} (Enso agent)}"
 if [ -n "$GITHUB_INTEGRATIONS" ]; then GIT_EMAIL_DEFAULT="$GH_BOT_EMAIL"
@@ -135,7 +142,7 @@ log "base packages"
 sudo apt-get update -qq
 sudo apt-get install -y -qq python3 git curl jq ca-certificates >/dev/null
 
-if ! have node || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
+if ! have node || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
   info "installing Node 22"
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null
   sudo apt-get install -y -qq nodejs >/dev/null
@@ -187,6 +194,7 @@ NPM_GLOBAL=()
 have vercel   || NPM_GLOBAL+=(vercel)
 have wrangler || NPM_GLOBAL+=(wrangler)
 have neonctl  || NPM_GLOBAL+=(neonctl)
+have sanity   || NPM_GLOBAL+=(@sanity/cli)
 if [ ${#NPM_GLOBAL[@]} -gt 0 ]; then
   info "npm install -g ${NPM_GLOBAL[*]}"
   sudo npm install -g --no-fund --no-audit "${NPM_GLOBAL[@]}" >/dev/null
@@ -210,7 +218,7 @@ if ! have lore || [ "$(cat "$LORE_DIR/.installed-rev" 2>/dev/null)" != "$LORE_HE
 fi
 info "lore $(lore --version 2>/dev/null || echo '?')"
 
-for t in claude codex gh vercel wrangler heroku neonctl lore; do
+for t in claude codex gh vercel wrangler heroku neonctl sanity lore; do
   have "$t" && info "✓ $t → $(command -v "$t")" || warn "$t missing"
 done
 
@@ -401,6 +409,9 @@ CLAUDE_LOGIN_NEEDED=false
   [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID"
   [ -n "$HEROKU_API_KEY" ]        && echo "HEROKU_API_KEY=$HEROKU_API_KEY"
   [ -n "$NEON_API_KEY" ]          && echo "NEON_API_KEY=$NEON_API_KEY"
+  [ -n "$STRIPE_API_KEY" ]        && echo "STRIPE_API_KEY=$STRIPE_API_KEY"
+  [ -n "$REVENUECAT_API_KEY" ]    && echo "REVENUECAT_API_KEY=$REVENUECAT_API_KEY"
+  [ -n "$SANITY_AUTH_TOKEN" ]     && echo "SANITY_AUTH_TOKEN=$SANITY_AUTH_TOKEN"
   true
 } > "$AGENT_ENV"
 chmod 600 "$AGENT_ENV"
@@ -445,16 +456,20 @@ if [ -n "$LORE_CONTEXT" ]; then
     info "registered MCP server 'lore' (--context $LORE_CONTEXT) for the admin agent"
   fi
 fi
-if [ -n "$PROJECT_REPO" ]; then
-  if [ -d "$PROJECT_DIR/.git" ]; then
-    info "project checkout $PROJECT_DIR exists"
-  elif git clone -q "https://github.int.exe.xyz/${PROJECT_REPO}.git" "$PROJECT_DIR" 2>/dev/null; then
-    info "cloned $PROJECT_REPO → $PROJECT_DIR (via github.int.exe.xyz)"
+PROJECT_LIST=""   # markdown lines for AGENTS.md
+for repo in $PROJECT_REPOS; do
+  dir="$HOME/apps/${repo##*/}"
+  if [ -d "$dir/.git" ]; then
+    info "project checkout $dir exists"
+  elif GH_TOKEN="$GH_TOKEN" git clone -q "https://${GIT_HOST}/${repo}.git" "$dir" 2>/dev/null; then
+    info "cloned $repo → $dir (via $GIT_HOST)"
+  elif [ "$GIT_HOST" = github.com ]; then
+    warn "could not clone $repo from github.com; check that GH_TOKEN can read it, and re-run"; continue
   else
-    warn "could not clone $PROJECT_REPO via github.int.exe.xyz; attach its GitHub integration to vm:$VM_NAME and re-run"
-    PROJECT_DIR=""
+    warn "could not clone $repo via github.int.exe.xyz; attach its GitHub integration to vm:$VM_NAME and re-run"; continue
   fi
-fi
+  PROJECT_DIRS+=("$dir"); PROJECT_LIST+="- \`$dir\` (\`$repo\`)"$'\n'
+done
 
 # ── 6. enso configuration ────────────────────────────────────────────────────
 log "enso configuration"
@@ -463,7 +478,7 @@ AGENT_NAME="$AGENT_NAME" VM_NAME="$VM_NAME" ENSO_BIN="$ENSO_BIN" ENSO_HOME="$ENS
 SLACK_BOT_TOKEN="$SLACK_BOT_TOKEN" SLACK_APP_TOKEN="$SLACK_APP_TOKEN" SLACK_OWNER_IDS="$SLACK_OWNER_IDS" \
 NOTIFY_CHANNEL="$NOTIFY_CHANNEL" CHANNELS="$CHANNELS" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" DM_WORKSPACE="$DM_WORKSPACE" \
 WORKSPACE_POLICY="$WORKSPACE_POLICY" RESTRICTED_ALLOW_DOMAINS="$RESTRICTED_ALLOW_DOMAINS" RESTRICTED_DENY_WRITE="$RESTRICTED_DENY_WRITE" \
-LORE_CONTEXT="$LORE_CONTEXT" LORE_MCP_URL="$LORE_MCP_URL" PROJECT_DIR="$PROJECT_DIR" \
+LORE_CONTEXT="$LORE_CONTEXT" LORE_MCP_URL="$LORE_MCP_URL" PROJECT_DIRS="${PROJECT_DIRS[*]}" \
 DEFAULT_MODEL="$DEFAULT_MODEL" DEFAULT_EFFORT="$DEFAULT_EFFORT" OPERATOR_NAME="$OPERATOR_NAME" \
 WORKSPACE_TEMPLATE="$HERE/templates/AGENTS.workspace.md" \
 SETTINGS_RESTRICTED_TEMPLATE="$HERE/templates/settings.restricted.json.tmpl" REPORT="$REPORT" \
@@ -486,25 +501,51 @@ AG="$ENSO_HOME/AGENTS.md"
 if grep -q "^You're Enso, an assistant" "$AG" && [ "$AGENT_NAME" != Enso ]; then
   sed -i "s/^You're Enso, an assistant/You're ${AGENT_NAME}, an assistant/" "$AG"; CHANGED+=(AGENTS.md)
 fi
+if [ "$GIT_HOST" = github.com ]; then
+  GITHUB_ACCESS="GitHub uses the operator's token (\`GH_TOKEN\` in the service environment) against
+github.com, so \`gh\` and \`git\` work as usual. Everything you push or open is attributed to the
+operator's account: only touch the project repositories."
+else
+  GITHUB_ACCESS="GitHub goes through the exe.dev integration at \`github.int.exe.xyz\`: the \`gh\` wrapper sets
+\`GH_HOST\` for you, and repositories clone from \`https://github.int.exe.xyz/<owner>/<repo>.git\`.
+Only the repositories attached to this VM are reachable that way."
+fi
+if [ "$GIT_HOST" = github.com ]; then GIT_HOWTO="Git and \`gh\` use github.com with the operator's token."
+else GIT_HOWTO="Git access uses \`github.int.exe.xyz\`; use \`gh\` normally through the installed
+wrapper, or set \`GH_HOST=github.int.exe.xyz\` explicitly."; fi
 PROJECT_SECTION=""
-if [ -n "$PROJECT_DIR" ]; then
+if [ ${#PROJECT_DIRS[@]} -gt 0 ]; then
   PROJECT_SECTION="
 ## Software development
 
-The project checkout is \`$PROJECT_DIR\` (\`$PROJECT_REPO\`). Follow its \`AGENTS.md\` and branch
-workflow. Git access uses \`github.int.exe.xyz\`; use \`gh\` normally through the installed
-wrapper, or set \`GH_HOST=github.int.exe.xyz\` explicitly. Never place credentials or real
-customer data in the repository.${CHANNEL_WORKSPACE:+ The conversations bound to \`$CHANNEL_WORKSPACE\` use one
+The project checkouts:
+${PROJECT_LIST}
+Follow each repository's \`AGENTS.md\` and branch workflow. $GIT_HOWTO Never place credentials or real
+customer data in a repository.${CHANNEL_WORKSPACE:+ The conversations bound to \`$CHANNEL_WORKSPACE\` use one
 unrestricted workspace with the full development toolchain, Enso CLI, and link access.}"
 fi
 if ! grep -q "enso-agent-bootstrap:house" "$AG" && ! grep -q "^## This installation" "$AG"; then
   render "$HERE/templates/AGENTS.house.md" \
-    | PS="$PROJECT_SECTION" awk '{ if ($0 == "__PROJECT_SECTION__") { if (ENVIRON["PS"] != "") print ENVIRON["PS"] } else print }' >> "$AG"
+    | PS="$PROJECT_SECTION" GA="$GITHUB_ACCESS" awk '{ if ($0 == "__PROJECT_SECTION__") { if (ENVIRON["PS"] != "") print ENVIRON["PS"] } else if ($0 == "__GITHUB_ACCESS__") print ENVIRON["GA"]; else print }' >> "$AG"
   CHANGED+=(AGENTS.md); info "appended the house section to $AG"
-elif [ -n "$PROJECT_SECTION" ] && grep -q "enso-agent-bootstrap:house" "$AG" && ! grep -q "^## Software development" "$AG"; then
-  # A project added after the first install: extend the bootstrap's own section.
-  printf '%s\n' "$PROJECT_SECTION" >> "$AG"
-  CHANGED+=(AGENTS.md); info "added the software-development section for $PROJECT_REPO"
+elif [ -n "$PROJECT_SECTION" ] && grep -q "enso-agent-bootstrap:house" "$AG"; then
+  if ! grep -q "^## Software development" "$AG"; then
+    # A project added after the first install: extend the bootstrap's own section.
+    printf '%s\n' "$PROJECT_SECTION" >> "$AG"
+    CHANGED+=(AGENTS.md); info "added the software-development section ($PROJECT_REPOS)"
+  else
+    missing=false; for d in "${PROJECT_DIRS[@]}"; do grep -qF "\`$d\`" "$AG" || missing=true; done
+    if $missing; then
+      # A repo added later: regenerate the section (it runs to the next heading or EOF).
+      PS="$PROJECT_SECTION" perl -0pi -e 's/\n## Software development\n.*?(?=\n## |\z)/$ENV{PS}\n/s' "$AG"
+      CHANGED+=(AGENTS.md); info "updated the software-development section ($PROJECT_REPOS)"
+    fi
+  fi
+fi
+# A house section written for the exe.dev integration, on a VM now using GH_TOKEN.
+if [ "$GIT_HOST" = github.com ] && grep -q "^GitHub goes through the exe.dev integration" "$AG"; then
+  GA="$GITHUB_ACCESS" perl -0pi -e 's/^GitHub goes through the exe\.dev integration.*?reachable that way\./$ENV{GA}/ms' "$AG"
+  CHANGED+=(AGENTS.md); info "house section: GitHub now via GH_TOKEN"
 fi
 DEF="$ENSO_HOME/workspaces/default/AGENTS.md"
 if grep -q "^Operate this Enso installation across its workspaces" "$DEF" 2>/dev/null; then

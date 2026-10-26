@@ -71,7 +71,9 @@ RESTRICTED_DENY_WRITE=""         # e.g. "/home/exedev/accord-ops /home/exedev/.e
 # vm:<agent>, plus tag:lore for lore-host's sync. Never tag an agent VM
 # `lore`: that hands it every client's integrations.
 GITHUB_INTEGRATIONS=""           # e.g. "inputlogic-merrin"
-PROJECT_REPO=""                  # e.g. "inputlogic/merrin" → cloned to ~/apps/merrin
+# One integration per repo. Every repo listed below is cloned to
+# ~/apps/<repo> and --add-dir'd into the channel workspace.
+PROJECT_REPOS=""                 # e.g. "inputlogic/merrin" or "abine/app abine/backend"
 
 # ── Claude ───────────────────────────────────────────────────────────────
 # Claude always runs on the Claude subscription: a long-lived token from
@@ -83,12 +85,26 @@ DEFAULT_MODEL="opus"
 DEFAULT_EFFORT="high"
 
 # ── Tool credentials (optional; loaded into the service environment) ────
-GH_TOKEN=""                      # only used when GITHUB_INTEGRATIONS is blank
+# GH_TOKEN replaces the integrations when the repo's org has no exe.dev
+# GitHub App (a client org we can't install it on): leave
+# GITHUB_INTEGRATIONS blank and git/gh use github.com with this token. It
+# sits in the service environment, so anyone in the bound channels can use
+# it: make it a fine-grained token limited to PROJECT_REPOS, with an expiry.
+GH_TOKEN=""
+# Commit author for the agent's commits. Vercel fails a PR whose author it
+# cannot match to a team member, so set this to a person on the Vercel team
+# (e.g. "Shawn Adrian" / shawn@nerdburn.com). Blank: "<Name> (Enso agent)" and
+# the exe.dev integration bot's noreply address.
+GIT_USER_NAME=""
+GIT_USER_EMAIL=""
 VERCEL_TOKEN=""
 CLOUDFLARE_API_TOKEN=""
 CLOUDFLARE_ACCOUNT_ID=""
 HEROKU_API_KEY=""
 NEON_API_KEY=""                  # neonctl (Neon personal API key, napi_…)
+STRIPE_API_KEY=""                # Stripe API (prefer a restricted key, rk_live_…/rk_test_…)
+REVENUECAT_API_KEY=""            # RevenueCat API (v2 secret key sk_…; a public appl_… key only does v1 subscriber lookups)
+SANITY_AUTH_TOKEN=""             # sanity CLI (robot/API token from sanity.io/manage → API → Tokens)
 
 # ── lore project memory ──────────────────────────────────────────────────
 # The project's lore context (e.g. lore-merrin). The channel workspace reaches

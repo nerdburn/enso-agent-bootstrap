@@ -19,11 +19,13 @@ skills and current command help rather than procedures from the retired enso 2.x
 
 ## Tools on this machine
 
-`gh`, `vercel`, `wrangler`, `heroku`, `lore`, `claude`, `codex`, and `enso` are installed.
-GitHub goes through the exe.dev integration at `github.int.exe.xyz`: the `gh` wrapper sets
-`GH_HOST` for you, and repositories clone from `https://github.int.exe.xyz/<owner>/<repo>.git`.
-Only the repositories attached to this VM are reachable that way. Other tool tokens, when the
+`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore`, `claude`, `codex`, and `enso` are installed.
+__GITHUB_ACCESS__
+Other tool tokens, when the
 operator provided them, are in the service environment (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN`,
-`HEROKU_API_KEY`). If a tool is not authenticated, say so and ask the operator; there is no
+`HEROKU_API_KEY`, `NEON_API_KEY`, `STRIPE_API_KEY` for the Stripe API via `curl -u "$STRIPE_API_KEY:"`, `REVENUECAT_API_KEY` as a Bearer token for api.revenuecat.com, `SANITY_AUTH_TOKEN` used by the `sanity` CLI). If a tool is not authenticated, say so and ask the operator; there is no
 browser here. Never paste token values into Slack, commits, logs, or workspace files.
+Commit as the git identity already configured here (`git config user.name` / `user.email`);
+never override it with `git -c user.*`, `--author`, or `GIT_AUTHOR_*`/`GIT_COMMITTER_*`.
+Vercel and other PR checks verify the commit author against a real account and fail otherwise.
 __PROJECT_SECTION__
