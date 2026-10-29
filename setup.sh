@@ -83,7 +83,7 @@ prompt_secret CLAUDE_CODE_OAUTH_TOKEN "Claude Code OAuth token (sk-ant-oat01-...
 
 # ── Tools ───────────────────────────────────────────────────────────────────
 echo; echo "${dim}Tool credentials — all optional; the CLIs are installed either way.${reset}"
-prompt_secret GH_TOKEN             "GitHub token (only without an integration)" "$(inherit "$D_GH")"
+prompt_secret GH_TOKEN             "GitHub token (inputagents classic PAT)" "$(inherit "$D_GH")"
 prompt_secret VERCEL_TOKEN         "Vercel token" "$(inherit "$D_VERCEL")"
 prompt_secret CLOUDFLARE_API_TOKEN "Cloudflare API token (wrangler)" "$(inherit "$D_CF")"
 if [ -n "$CLOUDFLARE_API_TOKEN" ]; then prompt CLOUDFLARE_ACCOUNT_ID "Cloudflare account ID" "$D_CFID"; else CLOUDFLARE_ACCOUNT_ID=""; fi

@@ -22,9 +22,10 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
     filesystem, credential env vars denied), Claude run with
     `--permission-mode dontAsk --setting-sources project` and no shell/deploy
     access.
-  GitHub through exe.dev integrations at `github.int.exe.xyz` with a `gh`
-  wrapper (or `GH_TOKEN` against github.com when the client's org has no
-  exe.dev GitHub App), every repo in `PROJECT_REPOS` checked out to `~/apps`; `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore` + its skills; house
+  GitHub on github.com as the shared agent account **inputagents** (`GH_TOKEN`:
+  its classic PAT, `gh auth login` + git credential helper, commits under its
+  noreply address; never a person's account), falling back to the exe.dev
+  integration proxy `github.int.exe.xyz` only without a token; every repo in `PROJECT_REPOS` checked out to `~/apps`; `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore` + its skills; house
   instructions in `~/.enso/AGENTS.md`; an operator knowledge note.
 - `install.sh` is idempotent. Re-running is always safe; an existing
   `config.json` is only extended (missing bindings, changed tokens), never replaced.
@@ -53,7 +54,11 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
      `connections:write` → copy the `xapp-…` token. enso 0.4 stores both in
      `~/.enso/config.json` (mode 600); there is no exe.dev gateway mode any more;
    - the **lore context** (e.g. `lore-merrin`) and, if there is code, the
-     **exe.dev GitHub integration** name(s) and the **repo(s)** (`owner/repo`, e.g. a frontend and a backend);
+     **repo(s)** (`owner/repo`, e.g. a frontend and a backend). The agents use
+     GitHub as **inputagents**: put its PAT in `GH_TOKEN` (the operator keeps it in
+     `~/.config/inputagents-gh-token`) and make sure inputagents can push to each
+     repo (inputlogic team access, or a collaborator invite on a client org).
+     The exe.dev GitHub integration is still created, for lore-host's sync;
    - a **Claude Code OAuth token** from `claude setup-token`, or "none", in
      which case they log in on this VM after install (`ssh -t <vm>.exe.xyz claude`,
      then `/login`). Claude always runs on the subscription; never fall back to

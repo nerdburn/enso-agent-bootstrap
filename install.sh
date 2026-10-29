@@ -20,7 +20,7 @@
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
 #   4. tool tokens → ~/.config/enso-agent/env, loaded by the service
-#   5. project checkouts (PROJECT_REPOS, via github.int.exe.xyz or GH_TOKEN)
+#   5. gh login as GH_TOKEN's account (inputagents) + project checkouts (PROJECT_REPOS)
 #   6. lib/configure_enso.py: Slack tokens checked, channels resolved/joined,
 #      full-access channel workspace with lore over the lore-mcp integration,
 #      config.json applied through `enso config apply` / `config set`
@@ -92,14 +92,10 @@ GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS:-}"
 # PROJECT_REPO is the older single-repo name and still works.
 PROJECT_REPOS="$(echo "${PROJECT_REPOS:-${PROJECT_REPO:-}}" | tr ',' ' ')"
 PROJECT_DIRS=()   # filled by the checkout step: the clones that exist
-# GitHub host: the exe.dev integration, or github.com with GH_TOKEN when the
-# repo's org has no exe.dev GitHub App (e.g. a client org we can't install it on).
-if [ -z "$GITHUB_INTEGRATIONS" ] && [ -n "$GH_TOKEN" ]; then GIT_HOST=github.com; else GIT_HOST=github.int.exe.xyz; fi
+# GitHub host: github.com as the agents' account (GH_TOKEN, the house default:
+# the shared `inputagents` user), or the exe.dev integration proxy without one.
+if [ -n "$GH_TOKEN" ]; then GIT_HOST=github.com; else GIT_HOST=github.int.exe.xyz; fi
 GH_BOT_EMAIL="267204973+exe-dev-github-integration[bot]@users.noreply.github.com"
-GIT_USER_NAME="${GIT_USER_NAME:-${AGENT_NAME} (Enso agent)}"
-if [ -n "$GITHUB_INTEGRATIONS" ]; then GIT_EMAIL_DEFAULT="$GH_BOT_EMAIL"
-else GIT_EMAIL_DEFAULT="$(echo "$AGENT_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-agent@users.noreply.github.com"; fi
-GIT_USER_EMAIL="${GIT_USER_EMAIL:-$GIT_EMAIL_DEFAULT}"
 LORE_REMOTE="${LORE_REMOTE:-exedev@lore-host.exe.xyz:/srv/lore/repos}"
 LORE_CONTEXT="${LORE_CONTEXT:-}"
 LORE_MCP_URL="${LORE_MCP_URL:-https://lore-mcp.int.exe.xyz/mcp}"
@@ -156,6 +152,18 @@ if [ -n "$TIMEZONE" ] && [ "$CUR_TZ" != "$TIMEZONE" ]; then
     || { sudo ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime; echo "$TIMEZONE" | sudo tee /etc/timezone >/dev/null; }
 fi
 
+GH_LOGIN=""
+if [ -n "$GH_TOKEN" ]; then
+  # The token's account: its noreply address makes commits show as that user.
+  GH_USER="$(curl -fsS -m 15 -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/user 2>/dev/null || true)"
+  GH_LOGIN="$(printf '%s' "$GH_USER" | jq -r '.login // empty' 2>/dev/null || true)"
+  [ -n "$GH_LOGIN" ] || die "GH_TOKEN was rejected by api.github.com; check the token"
+fi
+GIT_USER_NAME="${GIT_USER_NAME:-${AGENT_NAME} (Enso agent)}"
+if [ -n "$GH_LOGIN" ]; then GIT_EMAIL_DEFAULT="$(printf '%s' "$GH_USER" | jq -r '"\(.id)+\(.login)@users.noreply.github.com"')"
+elif [ -n "$GITHUB_INTEGRATIONS" ]; then GIT_EMAIL_DEFAULT="$GH_BOT_EMAIL"
+else GIT_EMAIL_DEFAULT="$(echo "$AGENT_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-agent@users.noreply.github.com"; fi
+GIT_USER_EMAIL="${GIT_USER_EMAIL:-$GIT_EMAIL_DEFAULT}"
 git config --global init.defaultBranch main
 git config --global user.name  "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
@@ -180,10 +188,13 @@ if [ -z "$REAL_GH" ]; then
   REAL_GH="$(type -ap gh | grep -v "^$HOME/.local/bin/" | head -1)"
 fi
 # The exe.dev GitHub integration injects credentials at github.int.exe.xyz;
-# this wrapper points gh at it, the way abby-agent is set up.
-if [ -n "$GITHUB_INTEGRATIONS" ]; then
+# this wrapper points gh at it when there is no GH_TOKEN. With one, gh talks to
+# github.com and an older wrapper goes.
+if [ "$GIT_HOST" = github.int.exe.xyz ] && [ -n "$GITHUB_INTEGRATIONS" ]; then
   printf '#!/bin/sh\nexport GH_HOST="${GH_HOST:-github.int.exe.xyz}"\nexec %s "$@"\n' "$REAL_GH" > "$HOME/.local/bin/gh"
   chmod 755 "$HOME/.local/bin/gh"
+elif [ -f "$HOME/.local/bin/gh" ] && grep -q github.int.exe.xyz "$HOME/.local/bin/gh"; then
+  rm -f "$HOME/.local/bin/gh"; hash -r
 fi
 
 if ! have heroku; then
@@ -403,7 +414,6 @@ CLAUDE_LOGIN_NEEDED=false
     exe-gateway)  printf 'ANTHROPIC_BASE_URL=https://llm.int.exe.xyz\nANTHROPIC_API_KEY=implicit\n' ;;
     *) die "CLAUDE_AUTH must be 'subscription' or 'exe-gateway' (got '$CLAUDE_AUTH')" ;;
   esac
-  [ -n "$GH_TOKEN" ] && [ -z "$GITHUB_INTEGRATIONS" ] && echo "GH_TOKEN=$GH_TOKEN"
   [ -n "$VERCEL_TOKEN" ]          && echo "VERCEL_TOKEN=$VERCEL_TOKEN"
   [ -n "$CLOUDFLARE_API_TOKEN" ]  && echo "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN"
   [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID"
@@ -421,8 +431,16 @@ if [ "$CLAUDE_AUTH" = subscription ] && [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
 else
   info "claude: $([ "$CLAUDE_AUTH" = exe-gateway ] && echo 'exe.dev LLM gateway (CLAUDE_AUTH=exe-gateway)' || echo 'subscription (OAuth token from the conf)')"
 fi
-if [ -n "$GH_TOKEN" ] && [ -z "$GITHUB_INTEGRATIONS" ]; then
-  GH_TOKEN="$GH_TOKEN" gh auth setup-git >/dev/null 2>&1 || true; info "gh: token + git credential helper"
+if [ -n "$GH_TOKEN" ]; then
+  # gh keeps the login in ~/.config/gh/hosts.yml, so the service and SSH sessions
+  # share it; any other github.com account (e.g. a person's) is logged out.
+  printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN gh auth login -h github.com -p https --with-token \
+    || die "gh auth login failed (a classic token needs repo, workflow and read:org)"
+  for u in $(env -u GH_TOKEN -u GITHUB_TOKEN gh auth status -h github.com 2>&1 | sed -n 's/.*account \([^ ]*\) .*/\1/p' | sort -u); do
+    [ "$u" = "$GH_LOGIN" ] || env -u GH_TOKEN -u GITHUB_TOKEN gh auth logout -h github.com -u "$u" >/dev/null 2>&1 || true
+  done
+  env -u GH_TOKEN -u GITHUB_TOKEN gh auth setup-git -h github.com >/dev/null 2>&1 || true
+  info "gh: logged in to github.com as $GH_LOGIN + git credential helper"
 fi
 if [ -n "$VERCEL_TOKEN" ]; then
   mkdir -p "$HOME/.local/share/com.vercel.cli"
@@ -461,10 +479,13 @@ for repo in $PROJECT_REPOS; do
   dir="$HOME/apps/${repo##*/}"
   if [ -d "$dir/.git" ]; then
     info "project checkout $dir exists"
-  elif GH_TOKEN="$GH_TOKEN" git clone -q "https://${GIT_HOST}/${repo}.git" "$dir" 2>/dev/null; then
+    if [ "$GIT_HOST" = github.com ] && git -C "$dir" remote get-url origin 2>/dev/null | grep -q '^https://github.int.exe.xyz/'; then
+      git -C "$dir" remote set-url origin "https://github.com/${repo}.git"; info "  origin → https://github.com/${repo}.git"
+    fi
+  elif git clone -q "https://${GIT_HOST}/${repo}.git" "$dir" 2>/dev/null; then
     info "cloned $repo → $dir (via $GIT_HOST)"
   elif [ "$GIT_HOST" = github.com ]; then
-    warn "could not clone $repo from github.com; check that GH_TOKEN can read it, and re-run"; continue
+    warn "could not clone $repo from github.com; check that $GH_LOGIN can read it, and re-run"; continue
   else
     warn "could not clone $repo via github.int.exe.xyz; attach its GitHub integration to vm:$VM_NAME and re-run"; continue
   fi
@@ -502,15 +523,15 @@ if grep -q "^You're Enso, an assistant" "$AG" && [ "$AGENT_NAME" != Enso ]; then
   sed -i "s/^You're Enso, an assistant/You're ${AGENT_NAME}, an assistant/" "$AG"; CHANGED+=(AGENTS.md)
 fi
 if [ "$GIT_HOST" = github.com ]; then
-  GITHUB_ACCESS="GitHub uses the operator's token (\`GH_TOKEN\` in the service environment) against
-github.com, so \`gh\` and \`git\` work as usual. Everything you push or open is attributed to the
-operator's account: only touch the project repositories."
+  GITHUB_ACCESS="GitHub uses the shared agent account \`$GH_LOGIN\` on github.com: \`gh\` is logged in as it and git's
+credential helper uses it, so \`gh\` and \`git\` work as usual. Everything you push or open is
+attributed to $GH_LOGIN: only touch the project repositories."
 else
   GITHUB_ACCESS="GitHub goes through the exe.dev integration at \`github.int.exe.xyz\`: the \`gh\` wrapper sets
 \`GH_HOST\` for you, and repositories clone from \`https://github.int.exe.xyz/<owner>/<repo>.git\`.
 Only the repositories attached to this VM are reachable that way."
 fi
-if [ "$GIT_HOST" = github.com ]; then GIT_HOWTO="Git and \`gh\` use github.com with the operator's token."
+if [ "$GIT_HOST" = github.com ]; then GIT_HOWTO="Git and \`gh\` use github.com as the \`$GH_LOGIN\` account."
 else GIT_HOWTO="Git access uses \`github.int.exe.xyz\`; use \`gh\` normally through the installed
 wrapper, or set \`GH_HOST=github.int.exe.xyz\` explicitly."; fi
 PROJECT_SECTION=""
@@ -542,10 +563,13 @@ elif [ -n "$PROJECT_SECTION" ] && grep -q "enso-agent-bootstrap:house" "$AG"; th
     fi
   fi
 fi
-# A house section written for the exe.dev integration, on a VM now using GH_TOKEN.
-if [ "$GIT_HOST" = github.com ] && grep -q "^GitHub goes through the exe.dev integration" "$AG"; then
-  GA="$GITHUB_ACCESS" perl -0pi -e 's/^GitHub goes through the exe\.dev integration.*?reachable that way\./$ENV{GA}/ms' "$AG"
-  CHANGED+=(AGENTS.md); info "house section: GitHub now via GH_TOKEN"
+# A house section written for the exe.dev integration (or an operator token), on a VM now using GH_TOKEN.
+if [ "$GIT_HOST" = github.com ] && grep -qE "^GitHub (goes through the exe.dev integration|uses the operator)|GH_HOST=github.int.exe.xyz" "$AG"; then
+  GA="$GITHUB_ACCESS" GH="$GIT_HOWTO" LC_ALL=C perl -0pi -e '
+    s/^GitHub goes through the exe\.dev integration.*?reachable that way\./$ENV{GA}/ms;
+    s/^GitHub uses the operator.s token.*?only touch the project repositories\./$ENV{GA}/ms;
+    s/Git access uses `github\.int\.exe\.xyz`; use `gh` normally through the installed\nwrapper, or set `GH_HOST=github\.int\.exe\.xyz` explicitly\./$ENV{GH}/g;' "$AG"
+  CHANGED+=(AGENTS.md); info "house section: GitHub now as $GH_LOGIN"
 fi
 DEF="$ENSO_HOME/workspaces/default/AGENTS.md"
 if grep -q "^Operate this Enso installation across its workspaces" "$DEF" 2>/dev/null; then

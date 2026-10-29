@@ -64,12 +64,12 @@ RESTRICTED_ALLOW_DOMAINS=""      # extra sandbox network destinations, e.g. "cdn
 RESTRICTED_DENY_WRITE=""         # e.g. "/home/exedev/accord-ops /home/exedev/.enso/workspaces/ws/dir/**"
 
 # ── Code ─────────────────────────────────────────────────────────────────
-# exe.dev GitHub integrations to attach to this VM (bootstrap.sh integrations).
-# Credentials stay at the exe.dev edge: git and gh go through
-# https://github.int.exe.xyz, and only the attached repos are reachable.
-# Create them as personal (not --team) integrations: they attach to
-# vm:<agent>, plus tag:lore for lore-host's sync. Never tag an agent VM
-# `lore`: that hands it every client's integrations.
+# The agents use GitHub as the shared account `inputagents` through GH_TOKEN
+# (below). exe.dev GitHub integrations are for lore-host's sync; attaching one
+# to this VM (bootstrap.sh integrations) only matters without GH_TOKEN, when
+# git and gh fall back to https://github.int.exe.xyz. Create them as personal
+# (not --team) integrations: tag:lore for lore-host's sync, plus vm:<agent>.
+# Never tag an agent VM `lore`: that hands it every client's integrations.
 GITHUB_INTEGRATIONS=""           # e.g. "inputlogic-merrin"
 # One integration per repo. Every repo listed below is cloned to
 # ~/apps/<repo> and --add-dir'd into the channel workspace.
@@ -85,16 +85,17 @@ DEFAULT_MODEL="opus"
 DEFAULT_EFFORT="high"
 
 # ── Tool credentials (optional; loaded into the service environment) ────
-# GH_TOKEN replaces the integrations when the repo's org has no exe.dev
-# GitHub App (a client org we can't install it on): leave
-# GITHUB_INTEGRATIONS blank and git/gh use github.com with this token. It
-# sits in the service environment, so anyone in the bound channels can use
-# it: make it a fine-grained token limited to PROJECT_REPOS, with an expiry.
+# GH_TOKEN: the inputagents classic PAT (repo, workflow, read:org), kept on the
+# operator's laptop in ~/.config/inputagents-gh-token. install.sh logs gh in as
+# that account on github.com (logging any other account out), sets up git's
+# credential helper and moves github.int.exe.xyz remotes to github.com.
+# inputagents needs push access to every PROJECT_REPOS entry. Anyone in the
+# bound channels can use it. Never use a person's token here.
 GH_TOKEN=""
-# Commit author for the agent's commits. Vercel fails a PR whose author it
-# cannot match to a team member, so set this to a person on the Vercel team
-# (e.g. "Shawn Adrian" / shawn@nerdburn.com). Blank: "<Name> (Enso agent)" and
-# the exe.dev integration bot's noreply address.
+# Commit author. Blank: "<Name> (Enso agent)" with GH_TOKEN's account noreply
+# address (commits show as inputagents); without GH_TOKEN, the exe.dev
+# integration bot's. Vercel fails a PR whose author it can't match to a team
+# member, so inputagents must be on the Vercel team for such projects.
 GIT_USER_NAME=""
 GIT_USER_EMAIL=""
 VERCEL_TOKEN=""
