@@ -125,7 +125,7 @@ TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone
 OPERATOR_NAME="Shawn Adrian"     # seeds the operator knowledge note
 
 # ── Sources ──────────────────────────────────────────────────────────────
-ENSO_VERSION="0.4.0"             # official release (github.com/geekforbrains/enso); later
+ENSO_VERSION="0.5.0"             # official release (github.com/geekforbrains/enso); later
                                  # upgrades: `enso update apply` on the VM
 # ENSO_HOME="/home/exedev/.enso" # default; abby-agent uses ~/.enso-abbe
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
