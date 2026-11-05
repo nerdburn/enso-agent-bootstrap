@@ -106,6 +106,10 @@ NEON_API_KEY=""                  # neonctl (Neon personal API key, napi_…)
 STRIPE_API_KEY=""                # Stripe API (prefer a restricted key, rk_live_…/rk_test_…)
 REVENUECAT_API_KEY=""            # RevenueCat API (v2 secret key sk_…; a public appl_… key only does v1 subscriber lookups)
 SANITY_AUTH_TOKEN=""             # sanity CLI (robot/API token from sanity.io/manage → API → Tokens)
+FIGMA_ACCESS_TOKEN=""            # Figma REST API (personal access token figd_…, Settings → Security); sent as X-Figma-Token
+# FIGMA_MCP=yes adds Figma's official remote MCP (mcp.figma.com) to a full-policy
+# channel workspace. It needs a one-time OAuth login on the VM (README, Figma).
+FIGMA_MCP=""
 
 # ── lore project memory ──────────────────────────────────────────────────
 # The project's lore context (e.g. lore-merrin). The channel workspace reaches

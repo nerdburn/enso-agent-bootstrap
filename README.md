@@ -82,6 +82,26 @@ TIMEZONE="America/Vancouver"
 OPERATOR_NAME="Shawn Adrian"
 ```
 
+## Figma
+
+`FIGMA_ACCESS_TOKEN` (a personal access token, `figd_…`) goes in the service
+environment for the REST API. `FIGMA_MCP=yes` adds Figma's official remote MCP
+(`https://mcp.figma.com/mcp`) to a full-policy channel workspace's
+`.claude/mcp.json`. It authenticates with OAuth, once per VM, as whichever
+Figma user signs in. Run it with the same `mcp.json` so the stored login
+matches the server the agent uses:
+
+```bash
+ssh -t <vm>.exe.xyz 'cd ~/.enso/workspaces/<workspace> && claude --strict-mcp-config --mcp-config .claude/mcp.json'
+# /mcp → figma → Authenticate → open the URL on your laptop and approve.
+```
+
+The browser then lands on a `http://localhost:<port>/callback?...` page that
+cannot load. If Claude does not offer to take the pasted URL, copy it from the
+address bar and finish from a second terminal while Claude is still waiting:
+`ssh <vm>.exe.xyz "curl -s '<that URL>'"`. Check with `/mcp`, where figma
+should show as connected.
+
 ## Upgrading older agents
 
 - **enso 0.2.0 or later** (official release): `enso update apply` on the VM.

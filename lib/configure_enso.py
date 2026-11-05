@@ -23,7 +23,7 @@ validates every change.
 
 Inputs (environment, exported by install.sh): AGENT_NAME, VM_NAME, ENSO_BIN,
 ENSO_HOME, SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_OWNER_IDS, DM_WORKSPACE, NOTIFY_CHANNEL,
-CHANNELS, CHANNEL_WORKSPACE, LORE_CONTEXT, LORE_MCP_URL, PROJECT_DIRS,
+CHANNELS, CHANNEL_WORKSPACE, LORE_CONTEXT, LORE_MCP_URL, FIGMA_MCP, PROJECT_DIRS,
 DEFAULT_MODEL, DEFAULT_EFFORT, AGENT_TIMEOUT, WEB_PORT, OPERATOR_NAME,
 WORKSPACE_TEMPLATE, REPORT (file collecting summary lines).
 """
@@ -278,6 +278,25 @@ def ensure_workspace(name: str, channels: list[dict]) -> list[str]:
                 info(f"workspace {name}: lore MCP → {url}")
         mcp_args = ["--strict-mcp-config", "--mcp-config", mcp_path]
         notes.append(f"   lore:     context '{context}' → workspace '{name}' via {url}")
+
+    # Figma's official remote MCP (OAuth). Added once, merged like any operator
+    # extra; the OAuth login is a one-time human step on the VM (see summary).
+    if env("FIGMA_MCP").lower() in ("1", "yes", "true"):
+        if policy == "restricted":
+            warn(f"workspace {name}: FIGMA_MCP ignored (restricted policy allows lore MCP tools only)")
+        else:
+            doc = {"mcpServers": {}}
+            if os.path.isfile(mcp_path):
+                with open(mcp_path, encoding="utf-8") as fh:
+                    doc = json.load(fh)
+            if "figma" not in doc.setdefault("mcpServers", {}):
+                doc["mcpServers"]["figma"] = {"type": "http", "url": "https://mcp.figma.com/mcp"}
+                os.makedirs(os.path.dirname(mcp_path), exist_ok=True)
+                with open(mcp_path, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(doc, indent=2) + "\n")
+                info(f"workspace {name}: figma MCP → https://mcp.figma.com/mcp")
+            mcp_args = ["--strict-mcp-config", "--mcp-config", mcp_path]
+            notes.append(f"   figma:    MCP in workspace '{name}' (one-time OAuth: see README, Figma)")
 
     settings_json = os.path.join(ws, "workspace.json")
     project_dirs = split_list(env("PROJECT_DIRS"))
