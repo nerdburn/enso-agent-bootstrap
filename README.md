@@ -5,7 +5,7 @@ Turn a fresh [exe.dev](https://exe.dev) VM into a configured
 abby-agent runs: Claude Code behind a Slack bot, a full-access channel
 workspace with the project checkout and [lore](https://github.com/nerdburn/lore)
 project memory, GitHub through exe.dev integrations, and the house toolkit
-(`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore`). One command per agent.
+(`gh`, `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore`, Playwright + headless Chromium). One command per agent.
 
 ```
 laptop                                     exe.dev VM (<name>-agent.exe.xyz)

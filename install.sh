@@ -15,7 +15,8 @@
 #
 # What a full run does:
 #   1. apt + Node, timezone, git identity
-#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore
+#   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore,
+#      Playwright + headless Chromium (lib/playwright.sh), claude-artifact (lib/claude-artifact.sh)
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -230,7 +231,11 @@ if ! have lore || [ "$(cat "$LORE_DIR/.installed-rev" 2>/dev/null)" != "$LORE_HE
 fi
 info "lore $(lore --version 2>/dev/null || echo '?')"
 
-for t in claude codex gh vercel wrangler heroku neonctl sanity lore; do
+log "headless browser (Playwright)"
+"$HERE/lib/playwright.sh" || warn "Playwright/Chromium install failed; the agent has no browser"
+"$HERE/lib/claude-artifact.sh" || warn "claude-artifact install failed"
+
+for t in claude codex gh vercel wrangler heroku neonctl sanity lore playwright claude-artifact; do
   have "$t" && info "✓ $t → $(command -v "$t")" || warn "$t missing"
 done
 
@@ -572,6 +577,12 @@ if [ "$GIT_HOST" = github.com ] && grep -qE "^GitHub (goes through the exe.dev i
     s/^GitHub uses the operator.s token.*?only touch the project repositories\./$ENV{GA}/ms;
     s/Git access uses `github\.int\.exe\.xyz`; use `gh` normally through the installed\nwrapper, or set `GH_HOST=github\.int\.exe\.xyz` explicitly\./$ENV{GH}/g;' "$AG"
   CHANGED+=(AGENTS.md); info "house section: GitHub now as $GH_LOGIN"
+fi
+if have playwright && ! grep -q "enso-agent-bootstrap:browser" "$AG"; then
+  "$HERE/lib/playwright.sh" --note "$AG" || warn "could not add the browser section to $AG"
+fi
+if have claude-artifact; then   # adds or refreshes the section
+  "$HERE/lib/claude-artifact.sh" --note "$AG" || warn "could not add the claude-artifact section to $AG"
 fi
 DEF="$ENSO_HOME/workspaces/default/AGENTS.md"
 if grep -q "^Operate this Enso installation across its workspaces" "$DEF" 2>/dev/null; then
