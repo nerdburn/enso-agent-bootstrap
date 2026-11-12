@@ -585,6 +585,15 @@ if [ "$GIT_HOST" = github.com ] && grep -qE "^GitHub (goes through the exe.dev i
     s/Git access uses `github\.int\.exe\.xyz`; use `gh` normally through the installed\nwrapper, or set `GH_HOST=github\.int\.exe\.xyz` explicitly\./$ENV{GH}/g;' "$AG"
   CHANGED+=(AGENTS.md); info "house section: GitHub now as $GH_LOGIN"
 fi
+# Reply style: replaced in place on every run (appended the first time), so template edits
+# reach existing VMs without reordering the file.
+before="$(cksum <"$AG")"
+if grep -q "enso-agent-bootstrap:replies" "$AG"; then
+  RS="$(cat "$HERE/templates/AGENTS.replies.md")" perl -0pi -e 's/<!-- enso-agent-bootstrap:replies -->\n.*?(?=\n+<!-- enso-agent-bootstrap:|\n+## (?!Replying in Slack)|\n*\z)/$ENV{RS}/s' "$AG"
+else
+  { echo; cat "$HERE/templates/AGENTS.replies.md"; } >> "$AG"
+fi
+if [ "$(cksum <"$AG")" != "$before" ]; then CHANGED+=(AGENTS.md); info "reply-style section → $AG"; fi
 if have playwright && ! grep -q "enso-agent-bootstrap:browser" "$AG"; then
   "$HERE/lib/playwright.sh" --note "$AG" || warn "could not add the browser section to $AG"
 fi
