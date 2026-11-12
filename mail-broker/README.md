@@ -21,13 +21,16 @@ Agents use it through `agent-mail` (`bin/agent-mail`, installed by `install.sh`)
 3. **Editor**: replace `Code.gs` with [`Code.gs`](Code.gs) and `appsscript.json`
    with [`appsscript.json`](appsscript.json). Save.
 4. Pick `setup` in the function menu → **Run** → authorize (it asks only for
-   "View your email messages and settings"). The execution log prints the
-   **admin key** once. Put it on your laptop:
-   `pbpaste > ~/.config/enso-agent-bootstrap/agent-mail-admin-key && chmod 600 $_`
+   "View your email messages and settings"). The log names the mailbox; it must
+   be agent@inputlogic.ca.
 5. **Deploy → New deployment** → type *Web app*, execute as **Me**, access
    **Anyone** → Deploy. Copy the web app URL (`https://script.google.com/macros/s/…/exec`)
    into `~/.config/enso-agent-bootstrap/defaults.conf` as `AGENT_MAIL_URL="…"`.
    "Anyone" only means anyone can reach it: every request still needs a key.
+6. The first `./bootstrap.sh mail-key <conf>` **claims** the broker. It generates
+   the admin key into `~/.config/enso-agent-bootstrap/agent-mail-admin-key`
+   (mode 600) and sends it once; the broker keeps its hash and refuses any later
+   claim. The admin key never shows up in a browser or a log.
 
 ## Per agent (laptop)
 
@@ -50,4 +53,5 @@ AGENT_EMAIL="athena@inputlogic.ca"
   anyone can email an alias.
 - **Revoke an agent**: admin op `revoke` with its `alias`; `agents` lists them.
 - **Audit**: Apps Script → *Executions* logs each request's op and alias (never keys or content).
-- **Rotate the admin key**: run `rotateAdmin` in the editor.
+- **Rotate the admin key**: run `rotateAdmin` in the editor, delete the laptop's
+  `agent-mail-admin-key`, and run `mail-key` again; agent keys survive.

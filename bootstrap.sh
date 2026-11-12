@@ -154,6 +154,21 @@ cmd_mail_key() {
   : "${AGENT_EMAIL:?set AGENT_EMAIL in $CONF (the agent's Claude address, e.g. athena@inputlogic.ca)}"
   : "${AGENT_MAIL_URL:?set AGENT_MAIL_URL (the broker's web app URL) in $DEFAULTS}"
   local admin_file="${AGENT_MAIL_ADMIN_KEY_FILE:-$HOME/.config/enso-agent-bootstrap/agent-mail-admin-key}"
+  if [ ! -e "$admin_file" ]; then
+    # First use: make the admin key here and claim the fresh broker with it, so
+    # the key never passes through a browser or a log.
+    log "claiming the mail broker (admin key → $admin_file)"
+    mkdir -p "$(dirname "$admin_file")"
+    ( umask 077; python3 -I -c 'import secrets; print(secrets.token_hex(32))' > "$admin_file" )
+    local claimed
+    claimed="$(ADMIN="$(cat "$admin_file")" python3 -I -c '
+import json, os; print(json.dumps({"op": "claim", "claim": os.environ["ADMIN"].strip()}))' \
+      | curl -sS -L --max-time 90 -H 'Content-Type: application/json' --data-binary @- "$AGENT_MAIL_URL")" || true
+    if ! printf '%s' "$claimed" | grep -q '"claimed":true'; then
+      rm -f "$admin_file"
+      die "could not claim the broker: $(printf '%s' "$claimed" | head -c 300)"
+    fi
+  fi
   [ -r "$admin_file" ] || die "no broker admin key at $admin_file (see mail-broker/README.md)"
   log "registering $AGENT_EMAIL with the mail broker"
   local resp

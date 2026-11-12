@@ -13,7 +13,9 @@
  *   {key, op: "whoami"}
  *   {key, op: "search", q?, max?}         → newest first, max ≤ 50
  *   {key, op: "read", id, max_chars?}     → headers, text body, links
- * Admin (the operator's admin key, from setup()):
+ * Admin (the operator's admin key):
+ *   {claim, op: "claim"}                  → first request only: sets the admin key
+ *                                           (the first bootstrap.sh mail-key); refused once set
  *   {admin, op: "register", alias}        → {key}; replaces that alias's old key
  *   {admin, op: "revoke", alias}
  *   {admin, op: "agents"}                 → registered aliases
@@ -33,24 +35,17 @@ var ADDR_HEADERS = ['To', 'Cc', 'Delivered-To', 'X-Original-To'];
 var META_HEADERS = ['From', 'To', 'Cc', 'Delivered-To', 'X-Original-To', 'Subject', 'Date', 'Authentication-Results'];
 
 // ── Run once from the editor ───────────────────────────────────────────────
-/** Creates the admin key and prints it to the execution log, once. */
+/** Authorizes the script (run once from the editor) and reports its state. */
 function setup() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('admin')) {
-    Logger.log('An admin key already exists. Run rotateAdmin() to replace it.');
-    return;
-  }
-  rotateAdmin();
+  Logger.log('Mailbox: ' + Gmail.Users.getProfile('me').emailAddress +
+    '. Admin: ' + (props.getProperty('admin') ? 'claimed' : 'unclaimed (the first ./bootstrap.sh mail-key claims it)'));
 }
 
-/** Replaces the admin key; the new one is printed to the execution log. */
+/** Drops the admin key; the next mail-key run claims it again. Agent keys stay. */
 function rotateAdmin() {
-  var key = newKey_();
-  PropertiesService.getScriptProperties().setProperty('admin', sha256_(key));
-  if (!PropertiesService.getScriptProperties().getProperty('allow')) {
-    PropertiesService.getScriptProperties().setProperty('allow', DEFAULT_ALLOW);
-  }
-  Logger.log('Admin key (copy it now; it is not stored): ' + key);
+  PropertiesService.getScriptProperties().deleteProperty('admin');
+  Logger.log('Admin key cleared. Delete agent-mail-admin-key on the laptop and run ./bootstrap.sh mail-key <conf> to claim again.');
 }
 
 // ── Web app ─────────────────────────────────────────────────────────────────
@@ -62,6 +57,7 @@ function doPost(e) {
     return json_({error: 'body is not JSON'});
   }
   try {
+    if (req.op === 'claim') return json_(claim_(req));
     if (req.admin) return json_(admin_(req));
     var alias = aliasFor_(req.key);
     if (!alias) return json_({error: 'unauthorized'});
@@ -104,7 +100,7 @@ function search_(alias, req) {
         date: first_(h, 'Date'),
         from: first_(h, 'From'),
         subject: first_(h, 'Subject'),
-        snippet: m.snippet || ''
+        snippet: decodeEntities_(m.snippet || '')
       });
     }
     pageToken = page.nextPageToken;
@@ -187,6 +183,24 @@ function sameOrSub_(domain, parent) {
 }
 
 // ── Admin ───────────────────────────────────────────────────────────────────
+/** Sets the admin key once, so it never has to be copied out of a log. */
+function claim_(req) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var props = PropertiesService.getScriptProperties();
+    if (props.getProperty('admin')) return {error: 'already claimed (run rotateAdmin() in the editor to start over)'};
+    var key = String(req.claim || '');
+    if (!/^[A-Za-z0-9]{40,}$/.test(key)) return {error: 'claim key must be 40+ letters/digits'};
+    props.setProperty('admin', sha256_(key));
+    if (!props.getProperty('allow')) props.setProperty('allow', DEFAULT_ALLOW);
+    console.log('claimed');
+    return {claimed: true};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function admin_(req) {
   var props = PropertiesService.getScriptProperties();
   var stored = props.getProperty('admin');
@@ -260,10 +274,18 @@ function collectBodies_(part, out) {
   var type = (part.mimeType || '').toLowerCase();
   var isAttachment = part.filename && part.filename.length > 0;
   if (!isAttachment && part.body && part.body.data && (type === 'text/plain' || type === 'text/html')) {
-    var s = Utilities.newBlob(Utilities.base64DecodeWebSafe(part.body.data)).getDataAsString('UTF-8');
+    var s = Utilities.newBlob(bodyBytes_(part.body.data)).getDataAsString('UTF-8');
     (type === 'text/plain' ? out.plain : out.html).push(s);
   }
   (part.parts || []).forEach(function (p) { collectBodies_(p, out); });
+}
+
+/** The Gmail service hands body data back as bytes or as unpadded base64url. */
+function bodyBytes_(data) {
+  if (Array.isArray(data)) return data;
+  var b64 = String(data).replace(/-/g, '+').replace(/_/g, '/').replace(/\s+/g, '');
+  while (b64.length % 4) b64 += '=';
+  return Utilities.base64Decode(b64);
 }
 
 function htmlToText_(html) {
@@ -276,7 +298,9 @@ function htmlToText_(html) {
 }
 
 function decodeEntities_(s) {
-  return s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  return String(s).replace(/&#(\d+);/g, function (_, n) { return String.fromCharCode(+n); })
+    .replace(/&#x([0-9a-f]+);/gi, function (_, n) { return String.fromCharCode(parseInt(n, 16)); })
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
 }
 

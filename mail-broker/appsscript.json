@@ -1,5 +1,5 @@
 {
-  "timeZone": "America/Edmonton",
+  "timeZone": "America/Vancouver",
   "dependencies": {
     "enabledAdvancedServices": [
       {"userSymbol": "Gmail", "serviceId": "gmail", "version": "v1"}
