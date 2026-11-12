@@ -13,6 +13,7 @@
  *   {key, op: "whoami"}
  *   {key, op: "search", q?, max?}         → newest first, max ≤ 50
  *   {key, op: "read", id, max_chars?}     → headers, text body, links
+ * Drive files shared with the alias: ops "docs" and "doc", see Drive.gs.
  * Admin (the operator's admin key):
  *   {claim, op: "claim"}                  → first request only: sets the admin key
  *                                           (the first bootstrap.sh mail-key); refused once set
@@ -66,6 +67,8 @@ function doPost(e) {
       case 'whoami': return json_({alias: alias});
       case 'search': return json_(search_(alias, req));
       case 'read':   return json_(read_(alias, req));
+      case 'docs':   return json_(docs_(alias, req));   // Drive.gs
+      case 'doc':    return json_(doc_(alias, req));
       default:       return json_({error: 'unknown op: ' + req.op});
     }
   } catch (err) {
@@ -227,7 +230,7 @@ function admin_(req) {
       if (req.senders !== undefined) props.setProperty('allow', String(req.senders));
       return {allow: allowList_()};
     default:
-      return {error: 'unknown admin op: ' + req.op};
+      return driveAdmin_(req, props) || {error: 'unknown admin op: ' + req.op};   // Drive.gs
   }
 }
 

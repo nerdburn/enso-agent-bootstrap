@@ -14,12 +14,13 @@ info() { printf '    %s\n' "$*"; }
 
 mkdir -p "$HOME/.local/bin"
 install -m 755 "$HERE/bin/agent-mail" "$HOME/.local/bin/agent-mail"
-info "✓ agent-mail → $HOME/.local/bin/agent-mail"
+install -m 755 "$HERE/bin/agent-docs" "$HOME/.local/bin/agent-docs"
+info "✓ agent-mail, agent-docs → $HOME/.local/bin"
 
 [ -n "$NOTE" ] && [ -f "$NOTE" ] || exit 0
 before="$(cksum <"$NOTE")"
 # The section runs from its marker to the next bootstrap marker, "## " heading or EOF.
-perl -0pi -e 's/\n*<!-- enso-agent-bootstrap:agent-mail -->\n.*?(?=\n<!-- enso-agent-bootstrap:|\n## (?!Email)|\z)/\n/s' "$NOTE"
+perl -0pi -e 's/\n*<!-- enso-agent-bootstrap:agent-mail -->\n.*?(?=\n<!-- enso-agent-bootstrap:|\n## (?!Email|Google Drive)|\z)/\n/s' "$NOTE"
 [ "$MODE" = --note ] && { echo; cat "$HERE/templates/AGENTS.agent-mail.md"; } >> "$NOTE"
 if [ "$(cksum <"$NOTE")" != "$before" ]; then
   info "agent-mail section $([ "$MODE" = --note ] && echo '→' || echo 'removed from') $NOTE"

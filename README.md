@@ -126,6 +126,15 @@ The broker is deployed once (done 2026-11-12; project "agent-mail-broker" in
 agent@, the URL is `AGENT_MAIL_URL`). The first `mail-key` claimed it with the
 admin key in `~/.config/enso-agent-bootstrap/agent-mail-admin-key`.
 
+**agent-docs**: Google Docs, Sheets, Slides, folders and files shared with
+the agent's address, through the same broker and key (`mail-broker/Drive.gs`).
+Drive can't tell aliases apart, so a file counts as the agent's only if
+Google's share email to its alias names it, or a folder it's in. On the VM:
+`agent-docs list [<folder link>]` and `agent-docs read <link>` (Docs →
+Markdown, Sheets → CSV per tab, Slides → text, other files → `~/docs/`).
+Read-only. A file shared without "Notify people" doesn't show up; re-share it with
+notification on, or grant it with the broker's admin op `grant`.
+
 **claude-web**: shared claude.ai artifact links. `claude-artifact <link>` reads
 an artifact through Claude Code's Artifact tool, which works for links shared
 inside Input Logic. A share from **another organization** (a client's own Claude
@@ -152,7 +161,7 @@ reached through the SSH tunnel. When the session expires, `claude-artifact`
 says the browser is signed out and the agent asks for a re-run. Check any time
 with `ssh <vm>.exe.xyz '~/.local/bin/claude-web status'`.
 
-Status (2026-11-12): athena has both; other agents need `AGENT_EMAIL` +
+Status (2026-11-12): athena has all three (broker version 4); other agents need `AGENT_EMAIL` +
 `mail-key` + `deploy`, then one `web-login`.
 
 ## Upgrading older agents
@@ -181,9 +190,9 @@ Status (2026-11-12): athena has both; other agents need `AGENT_EMAIL` +
 | `lib/read_legacy.py` | VM | reads an old home's tokens/owners/DM workspace/channels/lore context for `--migrate` |
 | `lib/convert_jobs.py` | VM | converts an old home's `jobs/*/JOB.md` to 0.4 workspace jobs for `--migrate` |
 | `lib/slack-manifest.json` | both | enso 0.4's Slack manifest + `channels:join`, name templated |
-| `bin/agent-mail`, `lib/agent-mail.sh` | VM | the agent's own mail via the broker; installer + AGENTS.md "Email" section |
+| `bin/agent-mail`, `bin/agent-docs`, `lib/agent-mail.sh` | VM | the agent's own mail and Drive shares via the broker; installer + AGENTS.md "Email" / "Google Drive" sections |
 | `bin/claude-web`, `lib/claude-web.js`, `lib/claude-web.sh` | VM | the agent's claude.ai browser session (status, accept, read, login-screen); installer |
 | `bin/claude-artifact`, `lib/claude-artifact.sh` | VM | claude.ai artifact links → files (Claude Code, falling back to claude-web) |
-| `mail-broker/` | Google (agent@) | Apps Script mail broker + deploy notes |
+| `mail-broker/` | Google (agent@) | Apps Script broker for mail (`Code.gs`) and Drive (`Drive.gs`) + deploy notes |
 | `templates/` | VM | house `AGENTS.md` section, channel and operator workspace `AGENTS.md`, operator note |
 | `AGENTS.md` / `CLAUDE.md` | VM agent | runbook for an agent doing the setup |

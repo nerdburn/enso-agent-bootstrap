@@ -14,15 +14,30 @@ maps to its own alias, and the script applies that scope itself:
 
 Agents use it through `agent-mail` (`bin/agent-mail`, installed by `install.sh`).
 
+**Drive** ([`Drive.gs`](Drive.gs), `agent-docs` on the VM): every alias is the
+same Google user, so Drive can't say whose a share was, but Google's share
+notification email goes to the alias. An agent may open a Drive file only if a
+share email to its alias (from Google's share sender, authenticated) names that
+file, or a folder above it. When the subject quotes a file name, only links
+whose Drive name matches it count, so links pasted into the sharer's message
+grant nothing. Docs come back as Markdown, Sheets as CSV per tab, Slides as
+text, and other files as bytes. It's read-only. For a file shared without a
+notification, the operator can grant it by hand: admin op `grant`
+(`{"admin": …, "op": "grant", "alias": "athena@inputlogic.ca", "id": "<link or id>"}`),
+plus `ungrant` and `grants`.
+
 ## One-time deploy (signed in as agent@inputlogic.ca)
 
 1. https://script.google.com → **New project**, name it `agent-mail broker`.
 2. **Project Settings** (gear) → tick *Show "appsscript.json" manifest file in editor*.
-3. **Editor**: replace `Code.gs` with [`Code.gs`](Code.gs) and `appsscript.json`
-   with [`appsscript.json`](appsscript.json). Save.
-4. Pick `setup` in the function menu → **Run** → authorize (it asks only for
-   "View your email messages and settings"). The log names the mailbox; it must
-   be agent@inputlogic.ca.
+3. **Editor**: replace `Code.gs` with [`Code.gs`](Code.gs), add a script file
+   `Drive` with [`Drive.gs`](Drive.gs), and replace `appsscript.json` with
+   [`appsscript.json`](appsscript.json) (it also enables the Gmail, Drive and
+   Sheets services). Save.
+4. Pick `setup` in the function menu → **Run** → authorize. Every scope is
+   read-only: view email, see and download Drive files, see spreadsheets, plus
+   "connect to an external service" (the script calling the Drive and Sheets
+   APIs). The log names the mailbox; it must be agent@inputlogic.ca.
 5. **Deploy → New deployment** → type *Web app*, execute as **Me**, access
    **Anyone** → Deploy. Copy the web app URL (`https://script.google.com/macros/s/…/exec`)
    into `~/.config/enso-agent-bootstrap/defaults.conf` as `AGENT_MAIL_URL="…"`.
