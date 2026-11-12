@@ -138,6 +138,12 @@ regenerated from the template on the fresh install.
 - Upgrades after install go through enso itself: `enso update check`, then
   `enso update apply` (snapshotted, rolls back on failure). The nightly
   `default:enso-update` job announces new releases.
+- Email and claude.ai artifacts: `agent-mail` reads only this agent's alias
+  (key from `bootstrap.sh mail-key` on the laptop, `AGENT_EMAIL` in the conf).
+  `claude-web` is the agent's own claude.ai browser, used by `claude-artifact`
+  for invitations from other organizations. Its sign-in has a CAPTCHA: never
+  try to sign it in yourself. Ask the human to run `./bootstrap.sh web-login <conf>`.
+  See README, "Email and claude.ai artifacts".
 - enso 0.4 no longer loads `~/.enso/secrets/*.env`. Tool tokens live in
   `~/.config/enso-agent/env`, loaded by the drop-in
   `~/.config/systemd/user/enso.service.d/10-agent-env.conf`.
