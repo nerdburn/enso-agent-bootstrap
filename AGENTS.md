@@ -25,7 +25,7 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
   GitHub on github.com as the shared agent account **inputagents** (`GH_TOKEN`:
   its classic PAT, `gh auth login` + git credential helper, commits under its
   noreply address; never a person's account), falling back to the exe.dev
-  integration proxy `github.int.exe.xyz` only without a token; every repo in `PROJECT_REPOS` checked out to `~/apps`; `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore` + its skills; Playwright with headless Chromium (`lib/playwright.sh`); `claude-artifact` for claude.ai artifact links (`lib/claude-artifact.sh`); house
+  integration proxy `github.int.exe.xyz` only without a token; every repo in `PROJECT_REPOS` checked out to `~/apps`; `vercel`, `wrangler`, `heroku`, `neonctl`, `sanity`, `lore` + its skills; Playwright with headless Chromium (`lib/playwright.sh`); `claude-artifact` for claude.ai artifact links (`lib/claude-artifact.sh`); `agent-mail` for the agent's own alias in the shared agent@ inbox (`lib/agent-mail.sh`, broker in `mail-broker/`, key from `bootstrap.sh mail-key`); house
   instructions in `~/.enso/AGENTS.md`; an operator knowledge note.
 - `install.sh` is idempotent. Re-running is always safe; an existing
   `config.json` is only extended (missing bindings, changed tokens), never replaced.

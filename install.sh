@@ -16,7 +16,8 @@
 # What a full run does:
 #   1. apt + Node, timezone, git identity
 #   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore,
-#      Playwright + headless Chromium (lib/playwright.sh), claude-artifact (lib/claude-artifact.sh)
+#      Playwright + headless Chromium (lib/playwright.sh), claude-artifact (lib/claude-artifact.sh),
+#      agent-mail (lib/agent-mail.sh)
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -89,6 +90,8 @@ HEROKU_API_KEY="${HEROKU_API_KEY:-}"; NEON_API_KEY="${NEON_API_KEY:-}"
 STRIPE_API_KEY="${STRIPE_API_KEY:-}"; REVENUECAT_API_KEY="${REVENUECAT_API_KEY:-}"
 SANITY_AUTH_TOKEN="${SANITY_AUTH_TOKEN:-}"
 FIGMA_ACCESS_TOKEN="${FIGMA_ACCESS_TOKEN:-}"; FIGMA_MCP="${FIGMA_MCP:-}"
+# agent-mail: the mail broker (mail-broker/) and this agent's key, from `bootstrap.sh mail-key`.
+AGENT_MAIL_URL="${AGENT_MAIL_URL:-}"; AGENT_MAIL_KEY="${AGENT_MAIL_KEY:-}"
 GITHUB_INTEGRATIONS="${GITHUB_INTEGRATIONS:-}"
 # PROJECT_REPOS lists every checkout (e.g. a frontend and a backend repo);
 # PROJECT_REPO is the older single-repo name and still works.
@@ -234,8 +237,9 @@ info "lore $(lore --version 2>/dev/null || echo '?')"
 log "headless browser (Playwright)"
 "$HERE/lib/playwright.sh" || warn "Playwright/Chromium install failed; the agent has no browser"
 "$HERE/lib/claude-artifact.sh" || warn "claude-artifact install failed"
+"$HERE/lib/agent-mail.sh" || warn "agent-mail install failed"
 
-for t in claude codex gh vercel wrangler heroku neonctl sanity lore playwright claude-artifact; do
+for t in claude codex gh vercel wrangler heroku neonctl sanity lore playwright claude-artifact agent-mail; do
   have "$t" && info "✓ $t → $(command -v "$t")" || warn "$t missing"
 done
 
@@ -429,6 +433,9 @@ CLAUDE_LOGIN_NEEDED=false
   [ -n "$REVENUECAT_API_KEY" ]    && echo "REVENUECAT_API_KEY=$REVENUECAT_API_KEY"
   [ -n "$SANITY_AUTH_TOKEN" ]     && echo "SANITY_AUTH_TOKEN=$SANITY_AUTH_TOKEN"
   [ -n "$FIGMA_ACCESS_TOKEN" ]    && echo "FIGMA_ACCESS_TOKEN=$FIGMA_ACCESS_TOKEN"
+  if [ -n "$AGENT_MAIL_URL" ] && [ -n "$AGENT_MAIL_KEY" ]; then
+    echo "AGENT_MAIL_URL=$AGENT_MAIL_URL"; echo "AGENT_MAIL_KEY=$AGENT_MAIL_KEY"
+  fi
   true
 } > "$AGENT_ENV"
 chmod 600 "$AGENT_ENV"
@@ -583,6 +590,15 @@ if have playwright && ! grep -q "enso-agent-bootstrap:browser" "$AG"; then
 fi
 if have claude-artifact; then   # adds or refreshes the section
   "$HERE/lib/claude-artifact.sh" --note "$AG" || warn "could not add the claude-artifact section to $AG"
+fi
+if have agent-mail; then
+  if [ -n "$AGENT_MAIL_URL" ] && [ -n "$AGENT_MAIL_KEY" ]; then
+    if MAIL_ALIAS="$(agent-mail whoami 2>&1)"; then info "agent-mail: reads mail for $MAIL_ALIAS"
+    else warn "agent-mail: $MAIL_ALIAS"; fi
+    "$HERE/lib/agent-mail.sh" --note "$AG" >/dev/null || warn "could not add the agent-mail section to $AG"
+  else
+    "$HERE/lib/agent-mail.sh" --no-note "$AG" >/dev/null || true
+  fi
 fi
 DEF="$ENSO_HOME/workspaces/default/AGENTS.md"
 if grep -q "^Operate this Enso installation across its workspaces" "$DEF" 2>/dev/null; then

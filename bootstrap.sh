@@ -12,6 +12,7 @@
 #   ./bootstrap.sh deploy [--local]  <conf>   run install.sh on the VM with this conf
 #   ./bootstrap.sh migrate [--local] <conf>   integrations + install.sh --migrate (enso 2.x fork → 0.4)
 #   ./bootstrap.sh lore-key          <conf>   register the VM's SSH key for the lore host
+#   ./bootstrap.sh mail-key          <conf>   mint this agent's agent-mail key (AGENT_EMAIL) into the conf
 #   ./bootstrap.sh up                <conf>   new-vm (if needed) + integrations + deploy + lore-key
 #   ./bootstrap.sh status|logs|ssh   <conf>
 #
@@ -32,7 +33,7 @@ CMD="${1:-}"; shift || true
 LOCAL=false
 if [ "${1:-}" = "--local" ]; then LOCAL=true; shift; fi
 CONF="${1:-}"
-[ -n "$CMD" ]  || { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[ -n "$CMD" ]  || { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 [ -n "$CONF" ] || die "usage: $0 $CMD [--local] <conf>"
 [ -f "$CONF" ] || die "config not found: $CONF"
 
@@ -144,6 +145,39 @@ cmd_lore_key() {
   fi
 }
 
+# agent-mail: register AGENT_EMAIL with the mail broker (mail-broker/) and
+# store the returned key as AGENT_MAIL_KEY in the conf; `deploy` ships it.
+# AGENT_MAIL_URL goes in defaults.conf; the admin key (from the broker's
+# setup()) stays on this laptop. Re-running rotates the agent's key.
+cmd_mail_key() {
+  need curl; need python3
+  : "${AGENT_EMAIL:?set AGENT_EMAIL in $CONF (the agent's Claude address, e.g. athena@inputlogic.ca)}"
+  : "${AGENT_MAIL_URL:?set AGENT_MAIL_URL (the broker's web app URL) in $DEFAULTS}"
+  local admin_file="${AGENT_MAIL_ADMIN_KEY_FILE:-$HOME/.config/enso-agent-bootstrap/agent-mail-admin-key}"
+  [ -r "$admin_file" ] || die "no broker admin key at $admin_file (see mail-broker/README.md)"
+  log "registering $AGENT_EMAIL with the mail broker"
+  local resp
+  resp="$(ADMIN="$(cat "$admin_file")" ALIAS="$AGENT_EMAIL" python3 -I -c '
+import json, os; print(json.dumps({"admin": os.environ["ADMIN"].strip(), "op": "register", "alias": os.environ["ALIAS"]}))' \
+    | curl -sS -L --max-time 90 -H 'Content-Type: application/json' --data-binary @- "$AGENT_MAIL_URL")" \
+    || die "could not reach the mail broker"
+  # The key goes straight from the response into the conf, never to the terminal.
+  RESP="$resp" CONF_PATH="$CONF" python3 -I -c '
+import json, os, re, sys
+try: r = json.loads(os.environ["RESP"])
+except ValueError: sys.exit("error: the broker did not return JSON (is the web app deployed with access Anyone?)")
+if "key" not in r: sys.exit("error: broker: " + r.get("error", "no key returned"))
+p = os.environ["CONF_PATH"]; s = open(p).read()
+line = "AGENT_MAIL_KEY=%s" % r["key"]   # hex only, no quoting needed
+if re.search(r"^AGENT_MAIL_KEY=.*$", s, re.M):
+    s = re.sub(r"^AGENT_MAIL_KEY=.*$", lambda m: line, s, count=1, flags=re.M)
+else:
+    s = s.rstrip("\n") + "\n" + line + "\n"
+open(p, "w").write(s)
+print("    stored AGENT_MAIL_KEY for %s in %s" % (r["alias"], p))'
+  echo "    next: $0 deploy $CONF   (or --local while the change is unpushed)"
+}
+
 case "$CMD" in
   manifest)          cmd_manifest ;;
   new-vm)            cmd_new_vm ;;
@@ -151,6 +185,7 @@ case "$CMD" in
   deploy)            cmd_deploy ;;
   migrate)           cmd_integrations; cmd_deploy --migrate ;;
   lore-key)          cmd_lore_key ;;
+  mail-key)          cmd_mail_key ;;
   up)                cmd_new_vm; cmd_integrations; cmd_deploy; cmd_lore_key
                      echo; echo "✅ '$AGENT_NAME' is live on $VM_HOST — DM it in Slack." ;;
   status)            exec ssh "$VM_HOST" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user status enso.service --no-pager' ;;

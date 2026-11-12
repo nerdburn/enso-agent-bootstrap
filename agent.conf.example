@@ -111,6 +111,14 @@ FIGMA_ACCESS_TOKEN=""            # Figma REST API (personal access token figd_�
 # channel workspace. It needs a one-time OAuth login on the VM (README, Figma).
 FIGMA_MCP=""
 
+# ── Email (agent-mail) ───────────────────────────────────────────────────
+# The agent's Claude address, an alias of agent@inputlogic.ca. With the mail
+# broker deployed (mail-broker/README.md; AGENT_MAIL_URL in defaults.conf),
+# `./bootstrap.sh mail-key <conf>` fills AGENT_MAIL_KEY: the agent then reads
+# mail sent to its own alias only, read-only, with `agent-mail`.
+AGENT_EMAIL=""
+AGENT_MAIL_KEY=""
+
 # ── lore project memory ──────────────────────────────────────────────────
 # The project's lore context (e.g. lore-merrin). The channel workspace reaches
 # it over HTTP through the exe.dev `lore-mcp` integration, which
