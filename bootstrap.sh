@@ -201,7 +201,7 @@ cmd_web_login() {
   vm_exists || die "VM $VM_NAME does not exist"
   log "claude.ai sign-in screen on $VM_HOST"
   echo "    open http://localhost:6080/vnc.html?autoconnect=1&resize=scale"
-  echo "    sign in as ${AGENT_EMAIL:-the agent's address}; the code arrives in agent@inputlogic.ca"
+  echo "    sign in as ${AGENT_EMAIL:-the agent address}; the code arrives in agent@inputlogic.ca"
   echo "    (or: ssh $VM_HOST agent-mail search 'from:mail.anthropic.com newer_than:1h'). Then press Enter here."
   ssh -t -o ExitOnForwardFailure=yes -L 6080:127.0.0.1:6080 "$VM_HOST" '~/.local/bin/claude-web login-screen'
   log "checking the session"
