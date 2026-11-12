@@ -13,6 +13,7 @@
 #   ./bootstrap.sh migrate [--local] <conf>   integrations + install.sh --migrate (enso 2.x fork → 0.4)
 #   ./bootstrap.sh lore-key          <conf>   register the VM's SSH key for the lore host
 #   ./bootstrap.sh mail-key          <conf>   mint this agent's agent-mail key (AGENT_EMAIL) into the conf
+#   ./bootstrap.sh web-login         <conf>   sign the VM's claude.ai browser in (you solve the CAPTCHA)
 #   ./bootstrap.sh up                <conf>   new-vm (if needed) + integrations + deploy + lore-key
 #   ./bootstrap.sh status|logs|ssh   <conf>
 #
@@ -33,7 +34,7 @@ CMD="${1:-}"; shift || true
 LOCAL=false
 if [ "${1:-}" = "--local" ]; then LOCAL=true; shift; fi
 CONF="${1:-}"
-[ -n "$CMD" ]  || { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[ -n "$CMD" ]  || { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 [ -n "$CONF" ] || die "usage: $0 $CMD [--local] <conf>"
 [ -f "$CONF" ] || die "config not found: $CONF"
 
@@ -193,6 +194,20 @@ print("    stored AGENT_MAIL_KEY for %s in %s" % (r["alias"], p))'
   echo "    next: $0 deploy $CONF   (or --local while the change is unpushed)"
 }
 
+# claude-web: the VM's claude.ai browser session, which accepts artifact invitations
+# and reads artifacts from other organizations. claude.ai's sign-in has a CAPTCHA,
+# so a person signs in: this tunnels the VM's browser screen to localhost:6080.
+cmd_web_login() {
+  vm_exists || die "VM $VM_NAME does not exist"
+  log "claude.ai sign-in screen on $VM_HOST"
+  echo "    open http://localhost:6080/vnc.html?autoconnect=1&resize=scale"
+  echo "    sign in as ${AGENT_EMAIL:-the agent's address}; the code arrives in agent@inputlogic.ca"
+  echo "    (or: ssh $VM_HOST agent-mail search 'from:mail.anthropic.com newer_than:1h'). Then press Enter here."
+  ssh -t -o ExitOnForwardFailure=yes -L 6080:127.0.0.1:6080 "$VM_HOST" '~/.local/bin/claude-web login-screen'
+  log "checking the session"
+  ssh "$VM_HOST" '~/.local/bin/claude-web status' </dev/null
+}
+
 case "$CMD" in
   manifest)          cmd_manifest ;;
   new-vm)            cmd_new_vm ;;
@@ -201,6 +216,7 @@ case "$CMD" in
   migrate)           cmd_integrations; cmd_deploy --migrate ;;
   lore-key)          cmd_lore_key ;;
   mail-key)          cmd_mail_key ;;
+  web-login)         cmd_web_login ;;
   up)                cmd_new_vm; cmd_integrations; cmd_deploy; cmd_lore_key
                      echo; echo "✅ '$AGENT_NAME' is live on $VM_HOST — DM it in Slack." ;;
   status)            exec ssh "$VM_HOST" 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user status enso.service --no-pager' ;;

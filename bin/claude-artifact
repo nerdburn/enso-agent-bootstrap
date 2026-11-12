@@ -93,8 +93,28 @@ account() {  # the Claude account this machine is logged in as
   env -i HOME="$HOME" PATH="$PATH" bash -c 'set -a; [ -f "$1" ] && . "$1"; set +a; claude auth status 2>/dev/null' _ "$ENVFILE" \
     | python3 -c 'import sys, json; print(json.load(sys.stdin).get("email") or "")' 2>/dev/null || true
 }
+# Refused: an artifact from another organization comes as an invitation and opens
+# only in a browser. claude-web (the VM's signed-in claude.ai session) accepts
+# pending invitations from this agent's mail and saves what the artifact renders.
+web_fallback() {
+  command -v claude-web >/dev/null 2>&1 || return 1
+  echo "claude-artifact: Claude Code was refused; trying this VM's claude.ai browser session" >&2
+  local rc=0
+  claude-web accept >&2 || rc=$?
+  [ "$rc" = 3 ] && return 3
+  rm -rf "$DEST"; mkdir -p "$DEST"
+  claude-web read "$URL" -d "$DEST" >&2 || return $?
+  echo "$URL → $DEST (rendered in the browser: the published files are not available this way)"
+  ( cd "$DEST" && for f in *; do printf '  %s  (%s bytes)\n' "$f" "$(wc -c <"$f" | tr -d ' ')"; done )
+  if $PRINT; then echo; cat "$DEST/page.txt"; fi
+  exit 0
+}
 case "$line" in
   FAILED*)
+    if [[ "${line,,}" == *refused* || "${line,,}" == *"not found"* || "${line,,}" == *"not shared"* ]]; then
+      rc=0; web_fallback || rc=$?
+      [ "$rc" = 3 ] && die "${line#FAILED } — and this VM's claude.ai browser session is signed out: ask the operator to run ./bootstrap.sh web-login for this agent"
+    fi
     acct="$(account)"
     hint=""; [ -n "$acct" ] && hint=" (this agent's Claude account is $acct: the artifact has to be shared with it)"
     die "${line#FAILED }$hint" ;;

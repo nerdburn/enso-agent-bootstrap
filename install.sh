@@ -17,7 +17,7 @@
 #   1. apt + Node, timezone, git identity
 #   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore,
 #      Playwright + headless Chromium (lib/playwright.sh), claude-artifact (lib/claude-artifact.sh),
-#      agent-mail (lib/agent-mail.sh)
+#      agent-mail (lib/agent-mail.sh), claude-web (lib/claude-web.sh)
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -238,8 +238,9 @@ log "headless browser (Playwright)"
 "$HERE/lib/playwright.sh" || warn "Playwright/Chromium install failed; the agent has no browser"
 "$HERE/lib/claude-artifact.sh" || warn "claude-artifact install failed"
 "$HERE/lib/agent-mail.sh" || warn "agent-mail install failed"
+have playwright && { "$HERE/lib/claude-web.sh" || warn "claude-web install failed"; }
 
-for t in claude codex gh vercel wrangler heroku neonctl sanity lore playwright claude-artifact agent-mail; do
+for t in claude codex gh vercel wrangler heroku neonctl sanity lore playwright claude-artifact agent-mail claude-web; do
   have "$t" && info "✓ $t → $(command -v "$t")" || warn "$t missing"
 done
 
