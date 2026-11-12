@@ -51,7 +51,8 @@ case "$CMD" in
     DISPLAY=$D "$CHROME" --user-data-dir="$BASE/profile" --no-first-run --no-default-browser-check --no-sandbox \
       --window-position=0,0 --window-size=1280,900 https://claude.ai/login >>"$LOG" 2>&1 & CP=$!
     # SIGTERM lets Chromium write its cookies before it exits.
-    trap 'kill -TERM $CP 2>/dev/null; for _ in $(seq 1 10); do kill -0 $CP 2>/dev/null || break; sleep 1; done; kill $WP $VP $XP 2>/dev/null' EXIT
+    trap 'kill -TERM $CP 2>/dev/null; for _ in $(seq 1 10); do kill -0 $CP 2>/dev/null || break; sleep 1; done
+          kill $WP $VP $XP 2>/dev/null; sleep 1; kill -KILL $WP $VP $XP 2>/dev/null; true' EXIT
     echo "Browser up. From the laptop: ssh -N -L 6080:127.0.0.1:6080 $(hostname -s).exe.xyz"
     echo "then open http://localhost:6080/vnc.html?autoconnect=1&resize=scale and sign in to claude.ai as $(agent-mail whoami 2>/dev/null || echo "this agent's address")."
     echo "Close this (Enter, Ctrl-C, or end the SSH session) when signed in; it stops by itself after 30 minutes."
