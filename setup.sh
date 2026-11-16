@@ -95,7 +95,7 @@ prompt LORE_REMOTE    "lore remote" "${D_LORE:-exedev@lore-host.exe.xyz:/srv/lor
 prompt LORE_CONTEXT   "lore context repo" "" "e.g. lore-merrin; reached over the exe.dev lore-mcp integration. Blank = none yet"
 prompt TIMEZONE       "VM timezone" "${D_TZ:-America/Vancouver}"
 prompt OPERATOR_NAME  "Operator name (seeds docs/operator.md)" "${D_OP:-$(git config user.name 2>/dev/null || true)}"
-prompt ENSO_VERSION   "enso release" "0.4.0" "Official release from github.com/geekforbrains/enso ('latest' also works)"
+prompt ENSO_VERSION   "enso release" "0.5.1" "Release from github.com/nerdburn/enso, the maintained fork ('latest' also works)"
 
 # ── Write ───────────────────────────────────────────────────────────────────
 umask 077

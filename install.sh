@@ -108,7 +108,10 @@ TIMEZONE="${TIMEZONE:-}"
 OPERATOR_NAME="${OPERATOR_NAME:-}"
 DEFAULT_MODEL="${DEFAULT_MODEL:-opus}"
 DEFAULT_EFFORT="${DEFAULT_EFFORT:-high}"
-ENSO_VERSION="${ENSO_VERSION:-0.5.0}"
+ENSO_VERSION="${ENSO_VERSION:-0.5.1}"
+# Releases come from the maintained fork; geekforbrains/enso is no longer maintained.
+ENSO_RELEASE_REPO="${ENSO_RELEASE_REPO:-nerdburn/enso}"
+ENSO_FEED="https://github.com/$ENSO_RELEASE_REPO/releases/latest/download/release.json"
 ENSO_HOME="${ENSO_HOME:-$HOME/.enso}"
 LORE_REPO="${LORE_REPO:-https://github.com/nerdburn/lore}"
 LORE_DIR="$HOME/apps/lore"
@@ -117,7 +120,7 @@ AGENT_ENV="$HOME/.config/enso-agent/env"
 export PATH="$HOME/.local/bin:$PATH"
 # Knobs from the enso 2.x bootstrap that no longer mean anything.
 [ -n "${SLACK_MODE:-}" ] && [ "${SLACK_MODE}" != "direct" ] && info "SLACK_MODE=${SLACK_MODE} ignored: enso 0.4 keeps the Slack tokens in config.json"
-[ -n "${ENSO_REF:-}${ENSO_REPO:-}" ] && info "ENSO_REPO/ENSO_REF ignored: enso comes from the official release (ENSO_VERSION=$ENSO_VERSION)"
+[ -n "${ENSO_REF:-}${ENSO_REPO:-}" ] && info "ENSO_REPO/ENSO_REF ignored: enso comes from the $ENSO_RELEASE_REPO release (ENSO_VERSION=$ENSO_VERSION)"
 
 # ── --manifest ───────────────────────────────────────────────────────────────
 if [ "$PRINT_MANIFEST" = true ]; then
@@ -326,7 +329,7 @@ if [ "$MIGRATE" = true ]; then
   sed -i '/enso-agent-bootstrap: route `enso slack …` through the exe.dev Slack gateway/d; /^export ENSO_SLACK_API_BASE_URL=/d' "$HOME/.bashrc" 2>/dev/null || true
 fi
 
-log "enso $ENSO_VERSION (official release)"
+log "enso $ENSO_VERSION ($ENSO_RELEASE_REPO release)"
 INSTALLED="$(jq -r '.version // empty' "$ENSO_HOME/runtime/install.json" 2>/dev/null || true)"
 if [ -z "$INSTALLED" ]; then
   # An older enso's launcher (often a symlink into its venv) blocks the release
@@ -336,8 +339,8 @@ if [ -z "$INSTALLED" ]; then
       mv "$ENSO_BIN" "$ENSO_BIN.legacy-$(date +%Y%m%d-%H%M%S)"; info "moved the old unmanaged enso launcher aside"
     fi
   fi
-  if [ "$ENSO_VERSION" = latest ]; then URL="https://github.com/geekforbrains/enso/releases/latest/download/install.sh"
-  else URL="https://github.com/geekforbrains/enso/releases/download/v${ENSO_VERSION}/install.sh"; fi
+  if [ "$ENSO_VERSION" = latest ]; then URL="https://github.com/$ENSO_RELEASE_REPO/releases/latest/download/install.sh"
+  else URL="https://github.com/$ENSO_RELEASE_REPO/releases/download/v${ENSO_VERSION}/install.sh"; fi
   curl -fsSL "$URL" | sh -s -- --home "$ENSO_HOME" --extras slack,web >/dev/null
   INSTALLED="$(jq -r .version "$ENSO_HOME/runtime/install.json")"
   info "installed enso $INSTALLED (managed runtime in $ENSO_HOME/runtime)"
@@ -346,6 +349,19 @@ elif [ "$ENSO_VERSION" != latest ] && [ "$INSTALLED" != "$ENSO_VERSION" ]; then
   warn "  enso update check && enso update apply   (snapshotted, rolls back on failure)"
 else
   info "enso $INSTALLED already installed"
+fi
+# Homes installed from geekforbrains/enso keep that feed in their receipt, and enso has no
+# command to change it: repoint it so `enso update` follows the maintained fork.
+RECEIPT="$ENSO_HOME/runtime/install.json"
+FEED_NOW="$(jq -r '.feed // empty' "$RECEIPT" 2>/dev/null || true)"
+if [ -n "$FEED_NOW" ] && [ "$FEED_NOW" != "$ENSO_FEED" ]; then
+  tmp="$(mktemp "$RECEIPT.XXXXXX")"
+  if jq --arg f "$ENSO_FEED" '.feed = $f' "$RECEIPT" > "$tmp" && [ -s "$tmp" ]; then
+    chmod 600 "$tmp"; mv "$tmp" "$RECEIPT"
+    info "enso update feed: $FEED_NOW -> $ENSO_FEED"
+  else
+    rm -f "$tmp"; warn "could not repoint the enso update feed in $RECEIPT"
+  fi
 fi
 [ -x "$ENSO_BIN" ] || die "the managed enso launcher is missing at $ENSO_BIN"
 "$ENSO_BIN" init --json >/dev/null || die "enso init failed; run \`$ENSO_BIN init\` to see why"

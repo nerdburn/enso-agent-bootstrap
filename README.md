@@ -1,7 +1,7 @@
 # enso-agent-bootstrap
 
 Turn a fresh [exe.dev](https://exe.dev) VM into a configured
-[enso](https://github.com/geekforbrains/enso) **0.4** Slack agent, set up the way
+[enso](https://github.com/nerdburn/enso) **0.5** (our maintained fork of geekforbrains/enso) Slack agent, set up the way
 abby-agent runs: Claude Code behind a Slack bot, a full-access channel
 workspace with the project checkout and [lore](https://github.com/nerdburn/lore)
 project memory, GitHub through exe.dev integrations, and the house toolkit

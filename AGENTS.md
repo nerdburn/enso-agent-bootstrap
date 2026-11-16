@@ -7,7 +7,8 @@ secrets, the Slack app, and the exe.dev control-plane steps need a person.
 
 ## What you are building
 
-- `enso` **0.4** (the official release from github.com/geekforbrains/enso),
+- `enso` **0.5** (released from github.com/nerdburn/enso, our maintained fork of the
+  unmaintained geekforbrains/enso; fixes go there as new releases),
   installed as a managed runtime under `~/.enso/runtime` with the launcher
   `~/.local/bin/enso`, running as the systemd `--user` service `enso.service`.
 - The house setup: owner DMs bound to the `default` operator workspace; the
