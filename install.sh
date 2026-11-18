@@ -18,6 +18,7 @@
 #   2. CLIs: claude, gh (+ exe.dev GitHub wrapper), vercel, wrangler, heroku, neonctl, sanity, lore,
 #      Playwright + headless Chromium (lib/playwright.sh), claude-artifact (lib/claude-artifact.sh),
 #      agent-mail (lib/agent-mail.sh), claude-web (lib/claude-web.sh)
+#      claude-gate (lib/claude-gate.sh): at most MAX_CONCURRENT_RUNS Claude runs at once
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -453,6 +454,7 @@ CLAUDE_LOGIN_NEEDED=false
   if [ -n "$AGENT_MAIL_URL" ] && [ -n "$AGENT_MAIL_KEY" ]; then
     echo "AGENT_MAIL_URL=$AGENT_MAIL_URL"; echo "AGENT_MAIL_KEY=$AGENT_MAIL_KEY"
   fi
+  echo "ENSO_MAX_RUNS=${MAX_CONCURRENT_RUNS:-3}"   # claude-gate: concurrent Claude runs
   true
 } > "$AGENT_ENV"
 chmod 600 "$AGENT_ENV"
@@ -539,6 +541,7 @@ if [ -n "$LEGACY_HOME" ] && [ -d "$LEGACY_HOME/jobs" ]; then
   log "migrate: converting home-level jobs"
   python3 "$HERE/lib/convert_jobs.py" "$LEGACY_HOME" "$ENSO_HOME" "${DM_WORKSPACE:-default}"
 fi
+ENSO_BIN="$ENSO_BIN" "$HERE/lib/claude-gate.sh" || warn "claude-gate install failed; Claude runs are not capped"
 [ -n "$CHANNEL_WORKSPACE" ] || CHANNEL_WORKSPACE="$(jq -r '[.bindings | to_entries[] | select(.value != "default") | .value][0] // empty' "$ENSO_HOME/config.json")"
 
 # ── 7. House layer ───────────────────────────────────────────────────────────

@@ -83,6 +83,10 @@ CLAUDE_CODE_OAUTH_TOKEN=""
 CLAUDE_AUTH="subscription"       # "exe-gateway" only to bill exe.dev's LLM gateway instead
 DEFAULT_MODEL="opus"
 DEFAULT_EFFORT="high"
+# At most this many Claude runs at once on the VM (bin/claude-gate). More wait
+# in arrival order, and the asker is told in their thread that it's queued.
+# The wait counts toward the turn timeout. 0 = no cap.
+MAX_CONCURRENT_RUNS="3"
 
 # ── Tool credentials (optional; loaded into the service environment) ────
 # GH_TOKEN: the inputagents classic PAT (repo, workflow, read:org), kept on the

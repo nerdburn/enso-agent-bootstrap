@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""claude-gate: cap how many `claude -p` runs enso has going at once on this VM.
+
+enso queues messages per conversation only, so a burst of new threads starts one
+Claude run each, and their builds/tests can exhaust the VM. enso's
+providers.claude.path points here (lib/claude-gate.sh sets it). A `-p` run takes
+one of MAX slots (ENSO_MAX_RUNS, default 3) or waits in arrival order; when a
+chat turn has to wait, the person who asked is told in their thread. Anything
+else (`claude --version`, interactive use) goes straight to the real CLI.
+
+Slots are flock()ed files, so a killed run frees its slot. The lock descriptor
+is not inherited by Claude or its tools, so a leftover background process
+(a dev server, say) cannot hold a slot. The wait counts toward enso's turn
+timeout (agent.timeout), which runs from when the turn started.
+"""
+
+import fcntl
+import os
+import signal
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+REAL_FILE = os.path.join(HOME, ".config/enso-agent/claude-path")  # written by lib/claude-gate.sh
+
+
+def real_claude() -> str:
+    """The CLI enso ran before the gate (recorded at install), else the usual places."""
+    if os.environ.get("ENSO_GATE_CLAUDE"):
+        return os.environ["ENSO_GATE_CLAUDE"]
+    try:
+        with open(REAL_FILE) as fh:
+            path = fh.read().strip()
+        if path and os.access(path, os.X_OK):
+            return path
+    except OSError:
+        pass
+    for path in (os.path.join(HOME, ".local/bin/claude"), "/usr/local/bin/claude"):
+        if os.access(path, os.X_OK):
+            return path
+    return "claude"
+
+
+REAL = real_claude()
+ENSO = os.path.join(HOME, ".local/bin/enso")
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local/state"), "claude-gate")
+POLL = 1.0
+
+
+def max_runs() -> int:
+    try:
+        return max(0, int(os.environ.get("ENSO_MAX_RUNS", "3")))
+    except ValueError:
+        return 3
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def try_slot(n: int):
+    """Return an open, locked slot file, or None when all n are taken."""
+    for i in range(n):
+        fd = os.open(os.path.join(STATE, f"slot-{i}.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            continue
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{os.getpid()}\n".encode())
+        return fd
+    return None
+
+
+def waiting() -> list[str]:
+    """Live tickets, oldest first; tickets of dead waiters are removed."""
+    out = []
+    for name in sorted(os.listdir(os.path.join(STATE, "waiting"))):
+        try:
+            pid = int(name.rsplit("-", 1)[1])
+        except (IndexError, ValueError):
+            pid = -1
+        if pid > 0 and alive(pid):
+            out.append(name)
+        else:
+            try:
+                os.unlink(os.path.join(STATE, "waiting", name))
+            except FileNotFoundError:
+                pass
+    return out
+
+
+def notify(n: int, ahead: int) -> None:
+    """Tell the person who asked that their request is queued (chat turns only)."""
+    if not os.environ.get("ENSO_ORIGIN_CHANNEL") or os.environ.get("ENSO_JOB") or os.environ.get("ENSO_BEAT"):
+        return
+    line = "the next one in line" if ahead == 0 else f"#{ahead + 1} in line"
+    text = (
+        f"⏳ Queued: I'm already working on {n} requests on this machine, the most I run at once. "
+        f"This one is {line} and starts automatically when one of them finishes. "
+        "No need to resend."
+    )
+    try:
+        subprocess.Popen(
+            [ENSO, "message", "send", text],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        pass
+
+
+def acquire(n: int):
+    os.makedirs(os.path.join(STATE, "waiting"), exist_ok=True)
+    fd = None if waiting() else try_slot(n)  # nobody queued: take a free slot now
+    if fd is not None:
+        return fd
+    ticket = os.path.join(STATE, "waiting", f"{time.time_ns():020d}-{os.getpid()}")
+    open(ticket, "w").close()
+    told = False
+    try:
+        while True:
+            queue = waiting()
+            mine = os.path.basename(ticket)
+            if mine not in queue:  # cleaned up by mistake; re-enter at the same place
+                open(ticket, "w").close()
+                continue
+            if queue[0] == mine:
+                fd = try_slot(n)
+                if fd is not None:
+                    return fd
+            if not told:
+                notify(n, queue.index(mine))
+                told = True
+            time.sleep(POLL)
+    finally:
+        try:
+            os.unlink(ticket)
+        except FileNotFoundError:
+            pass
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    n = max_runs()
+    if n == 0 or not ({"-p", "--print"} & set(args)):
+        os.execv(REAL, [REAL, *args])
+
+    # enso stops a turn by signalling the process group; leave quietly while waiting.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    slot = acquire(n)  # held until this process exits; not inherited (O_CLOEXEC)
+
+    child = subprocess.Popen([REAL, *args])
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, lambda s, _f: child.send_signal(s))
+    code = child.wait()
+    os.close(slot)
+    return 128 - code if code < 0 else code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
