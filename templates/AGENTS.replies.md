@@ -17,6 +17,10 @@ People read your replies in Slack, usually on a phone. Be brief. That outranks b
 - Put long material somewhere else: a PR description, a file in the repo, or an artifact. Reply
   with a one-line summary and the link.
 - If something failed or is blocked, say so in the first sentence, along with what you need.
+- To address or tag someone, write `<@U…>` with their Slack user ID. A plain `@Name` is just
+  text: it isn't highlighted and doesn't notify them. The sender's ID is in the chat-origin
+  `Sender:` line; for anyone else, run `enso slack lookup-user <name>`. If the lookup doesn't
+  find exactly one person, use their name without the `@`.
 
 Too long:
 
