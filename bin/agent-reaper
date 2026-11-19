@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# agent-reaper: kill processes that Claude runs left behind inside enso.service.
+#
+#   agent-reaper [--dry-run]
+#
+# A run that starts a dev server, watcher or browser in the background and then
+# exits leaves that process in enso.service's cgroup, re-parented to systemd,
+# where nothing will ever stop it; over a day or two they can exhaust the VM's
+# memory. A process in the cgroup whose parent is outside it is such an orphan.
+# Orphans older than REAPER_MIN_AGE seconds (default 7200, so a run still using
+# its dev server keeps it) are killed with their descendants: SIGTERM, then
+# SIGKILL after 10 s. enso itself and live runs (children of enso) are never
+# touched. Runs nightly from agent-reaper.timer; output goes to the journal
+# (`journalctl --user -u agent-reaper`).
+set -uo pipefail
+DRY=0
+case "${1:-}" in
+  --dry-run) DRY=1 ;;
+  "") ;;
+  *) echo "usage: agent-reaper [--dry-run]" >&2; exit 2 ;;
+esac
+MIN_AGE="${REAPER_MIN_AGE:-7200}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+cg="$(systemctl --user show enso.service -p ControlGroup --value 2>/dev/null)"
+main="$(systemctl --user show enso.service -p MainPID --value 2>/dev/null)"
+if [ -z "$cg" ] || [ ! -d "/sys/fs/cgroup$cg" ]; then
+  echo "agent-reaper: enso.service is not running; nothing to do"; exit 0
+fi
+
+hz="$(getconf CLK_TCK)"
+read -r up _ </proc/uptime; up="${up%.*}"
+declare -A in_cg=() parent=() age=()
+pids="$(find "/sys/fs/cgroup$cg" -name cgroup.procs -exec cat {} + 2>/dev/null)"
+for p in $pids; do
+  stat="$(cat "/proc/$p/stat" 2>/dev/null)" || continue
+  # Fields after the last ")" (the command name may contain spaces):
+  # 1 state, 2 ppid, ... 20 starttime (clock ticks since boot).
+  set -- ${stat##*) }
+  in_cg[$p]=1; parent[$p]=$2; age[$p]=$(( up - ${20} / hz ))
+done
+
+roots=()
+for p in "${!in_cg[@]}"; do
+  [ "$p" = "$main" ] && continue
+  [ -n "${in_cg[${parent[$p]}]:-}" ] && continue
+  [ "${age[$p]}" -ge "$MIN_AGE" ] && roots+=("$p")
+done
+if [ ${#roots[@]} -eq 0 ]; then
+  echo "agent-reaper: no orphaned processes older than ${MIN_AGE}s"; exit 0
+fi
+
+# Each root plus everything below it in the cgroup.
+declare -A doomed=()
+for p in "${roots[@]}"; do doomed[$p]=1; done
+grew=1
+while [ $grew = 1 ]; do
+  grew=0
+  for p in "${!in_cg[@]}"; do
+    if [ -z "${doomed[$p]:-}" ] && [ -n "${doomed[${parent[$p]}]:-}" ]; then doomed[$p]=1; grew=1; fi
+  done
+done
+
+total=0
+for p in "${roots[@]}"; do
+  kb=0
+  for q in "${!doomed[@]}"; do
+    # Sum the tree under this root.
+    r=$q; while [ -n "$r" ] && [ "$r" != "$p" ] && [ -n "${in_cg[$r]:-}" ]; do r=${parent[$r]}; done
+    [ "$r" = "$p" ] && kb=$(( kb + $(awk '/^VmRSS:/{print $2}' "/proc/$q/status" 2>/dev/null || echo 0) ))
+  done
+  total=$(( total + kb ))
+  cmd="$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | cut -c1-160)"
+  printf 'agent-reaper: %s pid %s, up %dh%02dm, %d MB: %s\n' \
+    "$([ $DRY = 1 ] && echo would kill || echo killing)" "$p" \
+    $(( ${age[$p]} / 3600 )) $(( ${age[$p]} % 3600 / 60 )) $(( kb / 1024 )) "$cmd"
+done
+printf 'agent-reaper: %d orphan(s), %d processes, %d MB\n' "${#roots[@]}" "${#doomed[@]}" $(( total / 1024 ))
+[ $DRY = 1 ] && exit 0
+
+kill -TERM "${!doomed[@]}" 2>/dev/null
+for _ in $(seq 1 10); do
+  alive=(); for p in "${!doomed[@]}"; do kill -0 "$p" 2>/dev/null && alive+=("$p"); done
+  [ ${#alive[@]} -eq 0 ] && break
+  sleep 1
+done
+if [ ${#alive[@]} -gt 0 ]; then
+  echo "agent-reaper: SIGKILL ${#alive[@]} process(es) that ignored SIGTERM"
+  kill -KILL "${alive[@]}" 2>/dev/null
+fi
+exit 0
