@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: pause code changes on this VM when the operator says so.
+
+Inactive (exits at once) unless ~/.config/enso-agent/code-paused exists; that flag and
+the matching AGENTS.md section are managed by `agent-code-pause on|off|status`, and from
+the laptop by `./code-pause.sh <agent|all> on|off|status`.
+
+While paused it blocks (exit 2, reason on stderr, which Claude sees):
+  - Edit/Write/MultiEdit/NotebookEdit of a file inside any git repository other than
+    the enso home (notes, plans, drafts, artifacts stay writable);
+  - Bash commands that ship code: git commit/push/merge/rebase/cherry-pick/am/apply/
+    revert/tag, in-place edits (sed -i, perl -i) or redirects into a repo file,
+    gh pr create/merge/edit/ready/review --approve, and gh api writes to code endpoints.
+It is a guard, not a sandbox: a script that writes files itself is not caught.
+"""
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+FLAG = os.path.join(HOME, ".config", "enso-agent", "code-paused")
+ENSO_HOME = os.environ.get("ENSO_HOME") or os.path.join(HOME, ".enso")
+ALLOWED_TOPS = {os.path.realpath(ENSO_HOME), os.path.realpath(os.path.join(HOME, ".enso"))}
+
+
+def message() -> str:
+    try:
+        with open(FLAG, encoding="utf-8") as fh:
+            since = fh.readline().strip()
+    except OSError:
+        since = ""
+    who = f" ({since})" if since else ""
+    return (
+        f"Code changes are paused on this VM by the operator{who}. Don't edit files in code "
+        "repositories, commit, push, merge or open PRs, and don't look for a way around this "
+        "block. Plan, review, explain, and write notes, specs or artifacts instead (under "
+        f"{ENSO_HOME}), and tell the person a developer will need to make the code change."
+    )
+
+
+def block(detail: str) -> None:
+    print(f"{message()} [{detail}]", file=sys.stderr)
+    sys.exit(2)
+
+
+def repo_top(path: str, cwd: str) -> str | None:
+    path = os.path.expanduser(path)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    d = os.path.realpath(path)
+    while d and not os.path.isdir(d):
+        d = os.path.dirname(d)
+    if not d:
+        return None
+    r = subprocess.run(["git", "-C", d, "rev-parse", "--show-toplevel"],
+                       capture_output=True, text=True, timeout=10)
+    return os.path.realpath(r.stdout.strip()) if r.returncode == 0 else None
+
+
+def in_code_repo(path: str, cwd: str) -> str | None:
+    top = repo_top(path, cwd)
+    return top if top and top not in ALLOWED_TOPS else None
+
+
+GIT_WRITE = re.compile(
+    r"\bgit\b(?:\s+(?:-[cC]\s+\S+|--\S+))*\s+"
+    r"(commit|push|merge|rebase|cherry-pick|am|apply|revert|tag|filter-branch|filter-repo)\b"
+)
+GH_WRITE = re.compile(r"\bgh\s+pr\s+(create|merge|edit|ready|reopen)\b|\bgh\s+pr\s+review\b[^|;&]*--approve")
+GH_API_WRITE = re.compile(
+    r"\bgh\s+api\b(?=[^|;&]*(?:-X|--method)\s*(?:POST|PUT|PATCH|DELETE))"
+    r"[^|;&]*/(?:contents|git/|merges|branches|pulls(?:/\d+/merge)?\b(?!/\d+/(?:comments|reviews)))"
+)
+
+
+def check_bash(cmd: str, cwd: str) -> None:
+    if m := GIT_WRITE.search(cmd):
+        block(f"git {m.group(1)}")
+    if GH_WRITE.search(cmd) or GH_API_WRITE.search(cmd):
+        block("GitHub write")
+    try:
+        words = shlex.split(cmd, posix=True)
+    except ValueError:
+        words = cmd.split()
+    # In-place edits and redirects into files inside a code repo.
+    for i, w in enumerate(words):
+        if w == "cd" and i + 1 < len(words) and not words[i + 1].startswith("-"):
+            nxt = os.path.expanduser(words[i + 1].rstrip(";&|"))
+            cwd = nxt if os.path.isabs(nxt) else os.path.join(cwd, nxt)
+            continue
+        targets: list[str] = []
+        if w in (">", ">>", "1>", "2>") and i + 1 < len(words):
+            targets.append(words[i + 1])
+        elif re.match(r"^\d?>>?\S", w):
+            targets.append(re.sub(r"^\d?>>?", "", w))
+        elif w == "tee":
+            targets += [x for x in words[i + 1:] if not x.startswith("-")][:3]
+        elif w in ("sed", "perl") and any(re.match(r"^-\w*i", x) for x in words[i + 1:]):
+            targets += [x for x in words[i + 1:] if not x.startswith("-")][-3:]
+        for t in targets:
+            if t.startswith("/dev/") or t in ("|", "&&", ";"):
+                continue
+            if top := in_code_repo(t, cwd):
+                block(f"shell write into {top}")
+
+
+def main() -> None:
+    if not os.path.exists(FLAG):
+        sys.exit(0)
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        sys.exit(0)
+    tool = data.get("tool_name", "")
+    inp = data.get("tool_input") or {}
+    cwd = data.get("cwd") or os.getcwd()
+    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+        path = inp.get("file_path") or inp.get("notebook_path") or ""
+        if path and (top := in_code_repo(path, cwd)):
+            block(f"{tool} in {top}")
+    elif tool == "Bash":
+        check_bash(inp.get("command", ""), cwd)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

@@ -164,6 +164,23 @@ with `ssh <vm>.exe.xyz '~/.local/bin/claude-web status'`.
 Status (2026-11-12): athena has all three (broker version 4); other agents need `AGENT_EMAIL` +
 `mail-key` + `deploy`, then one `web-login`.
 
+## Pausing code changes per agent
+
+```
+./code-pause.sh athena status          # or: all status
+./code-pause.sh athena on "until the release ships"
+./code-pause.sh athena tally off
+```
+
+While an agent is paused it still reads code, reviews PRs (comments only), investigates,
+plans and makes notes, specs and artifacts. A Claude Code `PreToolUse` hook
+(`bin/no-code-guard`, registered in `~/.claude/settings.json` on every VM and inert until
+paused) blocks edits in any git repo except the enso home, `git commit`/`push`/`merge`/
+`rebase` and the like, `gh pr create`/`merge`/`edit`, GitHub API writes to code, and
+`sed -i` or redirects into repo files. `on` also adds a "Code changes are paused" section to
+the agent's `AGENTS.md`; `off` removes it. Changes take effect on the next tool call; no
+restart. It is a guard, not a sandbox: a script that writes files itself is not caught.
+
 ## Upgrading older agents
 
 - **enso 0.2.0 or later** (official release): `enso update apply` on the VM.
@@ -194,5 +211,10 @@ Status (2026-11-12): athena has all three (broker version 4); other agents need 
 | `bin/claude-web`, `lib/claude-web.js`, `lib/claude-web.sh` | VM | the agent's claude.ai browser session (status, accept, read, login-screen); installer |
 | `bin/claude-artifact`, `lib/claude-artifact.sh` | VM | claude.ai artifact links → files (Claude Code, falling back to claude-web) |
 | `mail-broker/` | Google (agent@) | Apps Script broker for mail (`Code.gs`) and Drive (`Drive.gs`) + deploy notes |
+| `code-pause.sh` | laptop | pause/resume code changes per agent (`<agent|all> on|off|status`) |
+| `bin/no-code-guard`, `bin/agent-code-pause`, `lib/code-pause.sh` | VM | the code-pause hook (inert until paused), its switch, installer |
+| `bin/claude-gate`, `lib/claude-gate.sh` | VM | caps concurrent Claude runs (`MAX_CONCURRENT_RUNS`) |
+| `bin/agent-reaper`, `lib/agent-reaper.sh` | VM | nightly kill of processes runs left orphaned in `enso.service` |
+| `lib/memory-cap.sh` | VM | `enso.service` MemoryHigh/MemoryMax drop-in (75% / 87.5% of RAM) |
 | `templates/` | VM | house `AGENTS.md` section, channel and operator workspace `AGENTS.md`, operator note |
 | `AGENTS.md` / `CLAUDE.md` | VM agent | runbook for an agent doing the setup |

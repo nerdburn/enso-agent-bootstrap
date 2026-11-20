@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# agent-code-pause: pause or resume code changes by this VM's agent.
+#
+#   agent-code-pause on [note]   pause: the no-code-guard hook starts blocking, and
+#                                AGENTS.md gets a section telling the agent why
+#   agent-code-pause off         resume: flag and section removed
+#   agent-code-pause status      prints "paused (<since>)" or "active"
+#
+# While paused the agent can still read code, review PRs, plan, and write notes,
+# specs and artifacts in its enso home; see bin/no-code-guard for what is blocked.
+# Takes effect on the agent's next tool call; no restart. From the laptop:
+# ./code-pause.sh <agent|all> on|off|status.
+set -euo pipefail
+FLAG="$HOME/.config/enso-agent/code-paused"
+MARK="<!-- enso-agent-bootstrap:no-code -->"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+enso_home() {
+  local h
+  h="$(systemctl --user show enso.service -p Environment --value 2>/dev/null | tr ' ' '\n' | sed -n 's/^ENSO_HOME=//p' | head -1)"
+  echo "${h:-$HOME/.enso}"
+}
+AG="$(enso_home)/AGENTS.md"
+
+strip_section() {
+  # Drop the marked section: from the marker to the next bootstrap marker, the next
+  # "## " heading that is not ours, or the end of the file.
+  [ -f "$AG" ] && grep -qF "$MARK" "$AG" || return 0
+  perl -0pi -e 's/\n*<!-- enso-agent-bootstrap:no-code -->\n.*?(?=\n+<!-- enso-agent-bootstrap:|\n+## (?!Code changes are paused)|\n*\z)//s' "$AG"
+}
+
+guard_installed() {
+  [ -x "$HOME/.local/bin/no-code-guard" ] && grep -q no-code-guard "$HOME/.claude/settings.json" 2>/dev/null
+}
+
+case "${1:-status}" in
+  on)
+    guard_installed || { echo "no-code-guard hook is not installed; run lib/code-pause.sh first" >&2; exit 1; }
+    note="${2:-}"
+    since="since $(date +%Y-%m-%d)${note:+: $note}"
+    mkdir -p "$(dirname "$FLAG")"
+    printf '%s\n' "$since" >"$FLAG"
+    strip_section
+    cat >>"$AG" <<EOF
+
+$MARK
+## Code changes are paused ($since)
+
+The operator has paused code changes on this VM until further notice. Do not edit files in
+any code repository, and do not commit, push, merge, or open or update PRs. A hook enforces
+this; if it blocks something, do not look for a way around it.
+
+You can still read code, review PRs and post review comments, investigate bugs, and plan.
+When someone asks for a code change, reply with what should change and where (file paths
+and the approach, with a short snippet if it helps), say a developer will need to make it,
+and offer a written spec, plan or artifact. Notes, specs, drafts and artifacts under
+\`$(enso_home)\` are fine.
+EOF
+    echo "paused ($since)"
+    ;;
+  off)
+    rm -f "$FLAG"
+    strip_section
+    echo "active"
+    ;;
+  status)
+    if [ -f "$FLAG" ]; then echo "paused ($(head -1 "$FLAG"))"; else echo "active"; fi
+    guard_installed || echo "warning: no-code-guard hook is not installed" >&2
+    ;;
+  *) echo "usage: agent-code-pause on [note] | off | status" >&2; exit 2 ;;
+esac

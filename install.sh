@@ -20,6 +20,7 @@
 #      agent-mail (lib/agent-mail.sh), claude-web (lib/claude-web.sh)
 #      claude-gate (lib/claude-gate.sh): at most MAX_CONCURRENT_RUNS Claude runs at once
 #      agent-reaper (lib/agent-reaper.sh): nightly kill of processes runs left behind
+#      memory cap on enso.service (lib/memory-cap.sh); code-pause switch (lib/code-pause.sh)
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -544,6 +545,9 @@ if [ -n "$LEGACY_HOME" ] && [ -d "$LEGACY_HOME/jobs" ]; then
 fi
 ENSO_BIN="$ENSO_BIN" "$HERE/lib/claude-gate.sh" || warn "claude-gate install failed; Claude runs are not capped"
 "$HERE/lib/agent-reaper.sh" || warn "agent-reaper install failed; leftover processes are not cleaned up"
+ENSO_MEMORY_HIGH="${ENSO_MEMORY_HIGH:-}" ENSO_MEMORY_MAX="${ENSO_MEMORY_MAX:-}" "$HERE/lib/memory-cap.sh" \
+  || warn "memory cap failed; a runaway run can still freeze the VM"
+"$HERE/lib/code-pause.sh" || warn "code-pause switch install failed"
 [ -n "$CHANNEL_WORKSPACE" ] || CHANNEL_WORKSPACE="$(jq -r '[.bindings | to_entries[] | select(.value != "default") | .value][0] // empty' "$ENSO_HOME/config.json")"
 
 # ── 7. House layer ───────────────────────────────────────────────────────────

@@ -142,3 +142,7 @@ ENSO_VERSION="0.5.1"             # release from github.com/nerdburn/enso (mainta
 # ENSO_HOME="/home/exedev/.enso" # default; abby-agent uses ~/.enso-abbe
 BOOTSTRAP_REPO="https://github.com/nerdburn/enso-agent-bootstrap"
 LORE_REPO="https://github.com/nerdburn/lore"
+
+# enso.service memory cap (systemd sizes, e.g. 12G). Default: 75% / 87.5% of the VM's RAM.
+# ENSO_MEMORY_HIGH=
+# ENSO_MEMORY_MAX=
