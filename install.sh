@@ -21,6 +21,7 @@
 #      claude-gate (lib/claude-gate.sh): at most MAX_CONCURRENT_RUNS Claude runs at once
 #      agent-reaper (lib/agent-reaper.sh): nightly kill of processes runs left behind
 #      memory cap on enso.service (lib/memory-cap.sh); code-pause switch (lib/code-pause.sh)
+#      enso web viewer at https://<vm>.exe.xyz/ (lib/enso-web.sh)
 #   3. enso: the official managed release (ENSO_VERSION) → ~/.local/bin/enso,
 #      runtime inside ENSO_HOME; `enso init`
 #      (--migrate: stop the old service, back up and move the old home first)
@@ -548,6 +549,7 @@ ENSO_BIN="$ENSO_BIN" "$HERE/lib/claude-gate.sh" || warn "claude-gate install fai
 ENSO_MEMORY_HIGH="${ENSO_MEMORY_HIGH:-}" ENSO_MEMORY_MAX="${ENSO_MEMORY_MAX:-}" "$HERE/lib/memory-cap.sh" \
   || warn "memory cap failed; a runaway run can still freeze the VM"
 "$HERE/lib/code-pause.sh" || warn "code-pause switch install failed"
+ENSO_BIN="$ENSO_BIN" ENSO_HOME="$ENSO_HOME" "$HERE/lib/enso-web.sh" || warn "enso web viewer failed to start"
 [ -n "$CHANNEL_WORKSPACE" ] || CHANNEL_WORKSPACE="$(jq -r '[.bindings | to_entries[] | select(.value != "default") | .value][0] // empty' "$ENSO_HOME/config.json")"
 
 # ── 7. House layer ───────────────────────────────────────────────────────────

@@ -164,6 +164,13 @@ with `ssh <vm>.exe.xyz '~/.local/bin/claude-web status'`.
 Status (2026-11-12): athena has all three (broker version 4); other agents need `AGENT_EMAIL` +
 `mail-key` + `deploy`, then one `web-login`.
 
+## Watching runs in the browser
+
+Every agent runs enso's web viewer (`enso-web.service`, from `lib/enso-web.sh`) at
+`https://<vm>.exe.xyz/`: runs, jobs and threads. It has no login of its own; the exe.dev
+share stays Private, so it needs your exe.dev login. Give a teammate access with
+`ssh exe.dev share add <vm> <email>`.
+
 ## Pausing code changes per agent
 
 ```
@@ -216,5 +223,6 @@ restart. It is a guard, not a sandbox: a script that writes files itself is not 
 | `bin/claude-gate`, `lib/claude-gate.sh` | VM | caps concurrent Claude runs (`MAX_CONCURRENT_RUNS`) |
 | `bin/agent-reaper`, `lib/agent-reaper.sh` | VM | nightly kill of processes runs left orphaned in `enso.service` |
 | `lib/memory-cap.sh` | VM | `enso.service` MemoryHigh/MemoryMax drop-in (75% / 87.5% of RAM) |
+| `lib/enso-web.sh` | VM | enso web viewer (`enso-web.service`) on :8000 → `https://<vm>.exe.xyz/`, private via exe.dev share |
 | `templates/` | VM | house `AGENTS.md` section, channel and operator workspace `AGENTS.md`, operator note |
 | `AGENTS.md` / `CLAUDE.md` | VM agent | runbook for an agent doing the setup |
