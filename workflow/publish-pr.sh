@@ -7,23 +7,29 @@ set -euo pipefail
 cd "${ENSO_TASK_DIR:?publish needs the task worktree}"
 
 [ -z "$(git status --porcelain)" ] || result block "The worktree has uncommitted changes; Build must commit everything."
-branch="$(git branch --show-current)"
-[ -n "$branch" ] || result block "The worktree is not on a branch."
+[ -n "$(git branch --show-current)" ] || result block "The worktree is not on a branch."
 head="$(git rev-parse HEAD)"
 git fetch -q origin "$WORKFLOW_BASE" >&2 || true
 [ "$(git rev-list --count "origin/$WORKFLOW_BASE..HEAD" 2>/dev/null || echo 1)" != 0 ] \
   || result block "The candidate has no commits on top of $WORKFLOW_BASE."
 
+# The task JSON goes through stdin: it holds every brief and handoff, too long for argv.
+task_json="$(mktemp)"; trap 'rm -f "$task_json"' EXIT
+"$ENSO_BIN" task show "$ENSO_TASK" --workspace "$ENSO_WORKSPACE" --json > "$task_json"
+title="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["title"])' < "$task_json")"
+key="$(python3 -c 'import json, sys
+refs = json.load(sys.stdin).get("refs") or []
+print(next((r["value"] for r in refs if r.get("kind") == "lore"), ""))' < "$task_json")"
+
+# People know the work by its Lore key, so the PR branch is named after it
+# (athena/mc-541); the enso ref only names the local worktree branch.
+agent_slug="$(printf '%s' "$WORKFLOW_AGENT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//; s/-*$//')"
+branch="${agent_slug:-agent}/$(printf '%s' "${key:-$ENSO_TASK}" | tr '[:upper:]' '[:lower:]')"
+
 # --force-with-lease: a revised candidate replaces our own earlier push, but never a commit
 # someone else pushed to the branch since.
 git push --force-with-lease -u origin "HEAD:refs/heads/$branch" >&2 \
   || result block "Could not push $branch (someone else may have pushed to it); a person should look."
-
-task_json="$("$ENSO_BIN" task show "$ENSO_TASK" --workspace "$ENSO_WORKSPACE" --json)"
-title="$(python3 -c 'import json, sys; print(json.loads(sys.argv[1])["title"])' "$task_json")"
-key="$(python3 -c 'import json, sys
-refs = json.loads(sys.argv[1]).get("refs") or []
-print(next((r["value"] for r in refs if r.get("kind") == "lore"), ""))' "$task_json")"
 
 pr="$(gh pr list -R "$WORKFLOW_REPO" --head "$branch" --state open --json url --jq '.[0].url // empty')"
 if [ -z "$pr" ]; then
