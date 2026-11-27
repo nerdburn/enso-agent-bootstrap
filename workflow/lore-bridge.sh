@@ -120,4 +120,15 @@ print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "done
     "$HOME/.local/bin/enso-worker" sweep >&2 || true
   fi
 fi
-exec python3 "$here/lore_bridge.py" "$cmd"
+[ "$cmd" = dispatch ] || exec python3 "$here/lore_bridge.py" "$cmd"
+# A crash in dispatch repeats every tick: tell the operator in one line, once a day per
+# error, instead of a traceback alert every five minutes.
+err="$(mktemp)"; trap 'rm -f "$err"' EXIT
+if python3 "$here/lore_bridge.py" dispatch 2>"$err"; then exit 0; fi
+cat "$err" >&2
+last="$(grep -v '^\s' "$err" | tail -1)"; mark="$here/state/dispatch.error"
+stamp="$(date +%Y%m%d)-$(printf '%s' "$last" | cksum | cut -d' ' -f1)"
+if [ "$(cat "$mark" 2>/dev/null)" != "$stamp" ]; then
+  operator "*${WORKFLOW_NAME:-$ENSO_PROJECT} dispatch* failed: $(gist "${last:-see the job log}" 200)" && echo "$stamp" > "$mark"
+fi
+exit 0
