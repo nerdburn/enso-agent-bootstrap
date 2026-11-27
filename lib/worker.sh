@@ -19,6 +19,13 @@ warn() { printf '  ! %s\n' "$*" >&2; }
 : "${WORKER_SCOPE:?WORKER_SCOPE (Vercel team) is required}"
 : "${WORKER_PROJECT:?WORKER_PROJECT (Vercel project for sandboxes) is required}"
 
+# enso-worker passes sandbox options older CLIs lack (--request-header-from-env, --tag).
+if ! vercel sandbox create --help 2>/dev/null | grep -q -- '--request-header-from-env'; then
+  info "vercel CLI too old for sandboxes; installing vercel@${WORKER_VERCEL_CLI:-65.10.0}"
+  sudo npm i -g "vercel@${WORKER_VERCEL_CLI:-65.10.0}" --no-fund --no-audit >/dev/null 2>&1 \
+    || warn "could not upgrade the vercel CLI; remote builds will fail to create sandboxes"
+fi
+
 DIR="$HOME/.config/enso-agent"; ENVF="$DIR/worker.env"
 mkdir -p "$DIR" "$HOME/.local/bin"
 install -m 755 "$HERE/bin/enso-worker" "$HOME/.local/bin/enso-worker"
