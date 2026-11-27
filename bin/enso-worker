@@ -473,6 +473,10 @@ def cmd_check(command: list[str]) -> int:
 
 def cmd_sweep() -> int:
     """Stop running sandboxes whose task is no longer in the stage they were made for."""
+    jobs = CONFIG / "worker-jobs"
+    workspaces = {os.environ.get("ENSO_WORKSPACE", "")} | {
+        line.split(":", 1)[0] for line in (jobs.read_text().split() if jobs.exists() else []) if ":" in line}
+    workspaces.discard("")
     for box in sandboxes():
         if box["status"] != "running":
             continue
@@ -480,10 +484,16 @@ def cmd_sweep() -> int:
         if not m:
             continue
         ref, stage = m.group(1).upper(), m.group(2)
-        show = subprocess.run([ENSO, "task", "show", ref, "--all-workspaces", "--json"], capture_output=True, text=True)
-        try:
-            current = json.loads(show.stdout).get("stage")
-        except ValueError:
+        current = None
+        for ws in sorted(workspaces):
+            show = subprocess.run([ENSO, "task", "show", ref, "--workspace", ws, "--json"], capture_output=True, text=True)
+            try:
+                current = json.loads(show.stdout).get("stage")
+                break
+            except ValueError:
+                continue
+        if current is None:
+            log(f"{box['name']}: {ref} not found in {', '.join(sorted(workspaces)) or 'any workspace'}; left running")
             continue
         if current not in (stage, "blocked"):
             log(f"stopping {box['name']}: {ref} is at {current}")
