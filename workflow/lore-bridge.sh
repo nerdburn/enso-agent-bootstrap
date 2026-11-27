@@ -47,7 +47,9 @@ elif msg.startswith("Changed tests or check files need approval"):
     why = "approval"
 elif msg.startswith("Verification budget exhausted"):
     why = "budget"
-if why in ("approval", "budget") or not why:
+if why == "budget" and recent >= 3:
+    print("stuck|it keeps running out of attempts")
+elif why in ("approval", "budget") or not why:
     print(why)
 elif recent >= 3:
     print("stuck|" + why)  # the operator hears once; see below
