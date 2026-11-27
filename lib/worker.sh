@@ -20,11 +20,16 @@ warn() { printf '  ! %s\n' "$*" >&2; }
 : "${WORKER_PROJECT:?WORKER_PROJECT (Vercel project for sandboxes) is required}"
 
 # enso-worker passes sandbox options older CLIs lack (--request-header-from-env, --tag).
-if ! vercel sandbox create --help 2>/dev/null | grep -q -- '--request-header-from-env'; then
-  info "vercel CLI too old for sandboxes; installing vercel@${WORKER_VERCEL_CLI:-65.10.0}"
-  sudo npm i -g "vercel@${WORKER_VERCEL_CLI:-65.10.0}" --no-fund --no-audit >/dev/null 2>&1 \
-    || warn "could not upgrade the vercel CLI; remote builds will fail to create sandboxes"
-fi
+# Check every vercel on the PATH: a user-level copy in ~/.local can shadow the global one.
+want="${WORKER_VERCEL_CLI:-65.10.0}"
+for bin in $(which -a vercel 2>/dev/null | awk '!seen[$0]++'); do
+  "$bin" sandbox create --help 2>/dev/null | grep -q -- '--request-header-from-env' && continue
+  prefix="$(dirname "$(dirname "$bin")")"
+  info "vercel at $bin is too old for sandboxes; installing vercel@$want there"
+  if [ -w "$prefix/lib" ] || [ -w "$prefix" ]; then npm i -g --prefix "$prefix" "vercel@$want" --no-fund --no-audit >/dev/null 2>&1
+  else sudo npm i -g --prefix "$prefix" "vercel@$want" --no-fund --no-audit >/dev/null 2>&1; fi \
+    || warn "could not upgrade $bin; remote builds will fail to create sandboxes"
+done
 
 DIR="$HOME/.config/enso-agent"; ENVF="$DIR/worker.env"
 mkdir -p "$DIR" "$HOME/.local/bin"
