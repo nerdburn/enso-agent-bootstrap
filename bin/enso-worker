@@ -468,6 +468,14 @@ def cmd_run(claude_args: list[str]) -> int:
                         log(f"turn {last} handed the task on; not starting another")
                         return stream(target, last, session)
                 turn = last + 1
+                local = git(worktree, "rev-parse", "HEAD")
+                remote = output(sh(target, f"git -C {REPO} rev-parse HEAD", check=False)).strip()
+                if remote != local:
+                    # The branch moved here (rebased onto a newer base): start from it afresh.
+                    log(f"{target} is at {remote[:8]}, the branch at {local[:8]}; starting a new sandbox")
+                    vercel("stop", target, check=False)
+                    target, turn = f"{name}-{int(time.time()) % 100000}", 1
+                    create(target, task, stage, run_id, worktree)
                 start_turn(target, turn, claude_args, snapshots)
         code = stream(target, turn, session)
         collect(target, turn, worktree)

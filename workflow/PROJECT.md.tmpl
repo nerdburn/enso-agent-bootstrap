@@ -67,6 +67,7 @@ ${BUILD_CHECKS}
   output: The merge commit on ${WORKFLOW_BASE}.
 hooks:
   after_transition: ./lore-bridge.sh transition
+  after:build: ./refresh-branch.sh
   after:blocked: ./notify.sh
   after:signoff: ./notify.sh
 ---

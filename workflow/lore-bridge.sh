@@ -15,14 +15,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cmd="${1:?usage: lore-bridge.sh dispatch|transition}"
 
 if [ "$cmd" = dispatch ]; then
-  # enso cuts task worktrees from the local base branch: keep it at origin's (best effort).
-  if [ -n "${WORKFLOW_REPO_DIR:-}" ]; then
-    if [ "$(git -C "$WORKFLOW_REPO_DIR" branch --show-current)" = "$WORKFLOW_BASE" ]; then
-      git -C "$WORKFLOW_REPO_DIR" pull -q --ff-only origin "$WORKFLOW_BASE" >&2 || true
-    else
-      git -C "$WORKFLOW_REPO_DIR" fetch -q origin "+$WORKFLOW_BASE:$WORKFLOW_BASE" >&2 || true
-    fi
-  fi
+  # New tasks start from the local base branch: keep it at origin's.
+  sync_base || true
   # Blocks nobody decided, put back automatically:
   #  - a restart of enso cancels in-flight stage runs ("… cancelled (enso stopped)");
   #  - a remote worker's run died on an infrastructure error ("ended (error): enso-worker:

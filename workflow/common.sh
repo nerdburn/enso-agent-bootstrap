@@ -21,3 +21,14 @@ result() {
   python3 -c 'import json, sys; print(json.dumps({"outcome": sys.argv[1], "message": sys.argv[2], "output": sys.argv[3] or sys.argv[2]}))' "$1" "$2" "${3:-}"
   exit 0
 }
+
+# sync_base: bring the local base branch to origin's. enso cuts task worktrees from it and
+# PM reads the checkout on it. Best effort; a failure is reported on stderr.
+sync_base() {
+  [ -n "${WORKFLOW_REPO_DIR:-}" ] || return 0
+  if [ "$(git -C "$WORKFLOW_REPO_DIR" branch --show-current)" = "$WORKFLOW_BASE" ]; then
+    git -C "$WORKFLOW_REPO_DIR" pull -q --ff-only origin "$WORKFLOW_BASE" >&2
+  else
+    git -C "$WORKFLOW_REPO_DIR" fetch -q origin "+$WORKFLOW_BASE:$WORKFLOW_BASE" >&2
+  fi || { echo "could not update $WORKFLOW_BASE in $WORKFLOW_REPO_DIR from origin" >&2; return 1; }
+}
