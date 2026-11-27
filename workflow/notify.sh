@@ -73,11 +73,14 @@ for r in json.load(sys.stdin).get("refs") or []:
     if r.get("kind") == "path" and re.match(r"(before|after)[^/]*\.(png|jpe?g)$", os.path.basename(v), re.I) \
             and os.path.isfile(v) and v not in seen:
         seen.append(v)
-def pair(p):  # before.png, after.png, before-x.png, after-x.png
-    base = os.path.basename(p).lower()
-    rest = re.sub(r"^(before|after)", "", base)
-    return (rest.startswith("-") or rest.startswith("_"), rest, not base.startswith("before"))
-print("\n".join(sorted(seen, key=pair)[:6]))')"
+def rest(p):
+    return re.sub(r"^(before|after)", "", os.path.basename(p).lower())
+paired = {rest(p) for p in seen if os.path.basename(p).lower().startswith("before")} & \
+         {rest(p) for p in seen if os.path.basename(p).lower().startswith("after")}
+def order(p):  # complete before/after pairs first (the plain one first), then lone shots
+    r = rest(p)
+    return (r not in paired, r[:1] in "-_", r, not os.path.basename(p).lower().startswith("before"))
+print("\n".join(sorted(seen, key=order)[:8]))')"
     if [ -n "$thread" ] && [ -n "$shots" ]; then
       files=(); while IFS= read -r f; do files+=("$f"); done <<<"$shots"
       SLACK_UPLOAD_COMMENT="Before and after, from the preview:" \
