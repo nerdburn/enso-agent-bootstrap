@@ -44,9 +44,20 @@ mark="$here/state/$ref.rules"; key="$head $(printf '%s' "$files" | cksum | cut -
 
 IFS=',' read -r -a list <<<"$files"
 paths=(); for f in "${list[@]}"; do f="${f# }"; [ -n "$f" ] && paths+=("$f"); done
-diff="$(git -C "$wt" diff "$start" "$head" -- "${paths[@]}" | head -c 60000)"
-brief="$(stage_output "$ref" pm | head -c 6000)"
-handoff="$(stage_output "$ref" build | head -c 2000)"
+diff="$(git -C "$wt" diff "$start" "$head" -- "${paths[@]}" | head -c 60000 || true)"
+brief="$(stage_output "$ref" pm 2>/dev/null | head -c 6000 || true)"
+handoff="$(stage_output "$ref" build 2>/dev/null | head -c 2000 || true)"
+# Other changed files the handoff names (a compatibility case list, a fixture): the gate
+# does not list them, but they can be where a check moved to.
+mentioned=()
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case " ${paths[*]} " in *" $f "*) continue ;; esac
+  base="$(basename "$f")"
+  if [[ "$handoff" == *"$f"* || "$handoff" == *"${base%.*}"* ]]; then mentioned+=("$f"); fi
+done < <(git -C "$wt" diff --name-only "$start" "$head")
+related=""
+[ "${#mentioned[@]}" -gt 0 ] && related="$(git -C "$wt" diff "$start" "$head" -- "${mentioned[@]}" | head -c 25000 || true)"
 
 schema='{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","escalate"]},"reason":{"type":"string"}},"required":["verdict","reason"]}'
 prompt="You review edits an AI coding agent made to existing tests and check files, before a
@@ -69,7 +80,10 @@ $brief
 $handoff
 
 ## Diff of the protected files
-$diff"
+$diff
+
+## Other changed files the handoff mentions (not gated; context)
+${related:-none}"
 
 printf '%s' "$prompt" > "$out_file.prompt"
 out="$(cd /tmp && timeout 600 "$(cat "$HOME/.config/enso-agent/claude-path" 2>/dev/null || echo claude)" -p --model opus --tools "" --strict-mcp-config \
