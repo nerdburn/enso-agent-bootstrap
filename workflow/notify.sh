@@ -55,8 +55,14 @@ case "$ENSO_TO_STAGE:${ENSO_BLOCK_KIND:-}:${ENSO_FROM_STAGE:-}" in
     # Short: what was done, anything to confirm, the link, "can I ship it?". Review's other
     # sections and QA's report stay on the task; the screenshots go into the thread.
     pr="$(state "$ref" pr)"
+    # Preview links from the Vercel bot's comment on the PR (one per Vercel project; an
+    # API-only project has nothing to look at). The statuses only link to the dashboard.
+    previews=""
+    [ -n "$pr" ] && previews="$(gh pr view "$pr" -R "$WORKFLOW_REPO" --json comments \
+      --jq '.comments[] | select(.author.login | test("vercel"; "i")) | .body' 2>/dev/null \
+      | grep -oE 'https://[a-z0-9-]+\.vercel\.app' | sort -u | grep -vE '^https://[a-z0-9-]*api-git-' | head -4 || true)"
     receipt="$(stage_output "$ref" review | python3 -c 'import re, sys
-text, mentions, title, pr = sys.stdin.read(), *sys.argv[1:]
+text, mentions, title, pr, previews = sys.stdin.read(), *sys.argv[1:]
 def field(name):
     m = re.search(r"\*\*" + name + r":?\*\*:?[ \t]*(.*?)(?=\n\s*\*\*[A-Z][^*\n]*:?\*\*|\Z)", text, re.S)
     return m.group(1).strip() if m else ""
@@ -66,9 +72,19 @@ asks = [a for a in asks if a]
 out = f"{mentions}I finished *{title}*" + (f": {changed[:1].lower() + changed[1:]}" if changed else ".")
 if asks:
     out += "\n\nBefore I ship it, can you confirm:\n" + "\n".join("• " + a for a in asks)
-peek = f"Take a peek ({pr}) and let me know: can" if pr else "Can"
-out += f"\n\n{peek} I ship it? Reply *approve*, or tell me what to change."
-print(out)' "$mentions" "$title" "$pr" \
+links = [u for u in previews.split() if u]
+def label(u):  # marble-web-git-athena-mc-1-team.vercel.app -> web
+    return u.split("//", 1)[1].split("-git-", 1)[0].split("-")[-1]
+if len(links) == 1:
+    ask = f"Take a peek at the preview ({links[0]}) and let me know: can I ship it?"
+elif links:
+    ask = "Take a peek at the previews (" + ", ".join(f"{label(u)}: {u}" for u in links) + ") and let me know: can I ship it?"
+elif pr:
+    ask = f"Here is the pull request: {pr}. Can I ship it?"
+else:
+    ask = "Can I ship it?"
+out += f"\n\n{ask} Reply *approve*, or tell me what to change."
+print(out)' "$mentions" "$title" "$pr" "$previews" \
       | "$ENSO_BIN" message send - --to "slack:$WORKFLOW_CHANNEL" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null)" \
       || { echo "notify.sh: signoff not sent: $ref" >&2; exit 0; }
     # QA's Before/After screenshots (task refs of kind path) go into the notice's thread.

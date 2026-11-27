@@ -16,6 +16,8 @@ People read your replies in Slack, usually on a phone. Be brief. That outranks b
 - Mention caveats only when they change what the reader should do, and keep each one to a clause.
 - Put long material somewhere else: a PR description, a file in the repo, or an artifact. Reply
   with a one-line summary and the link.
+- Call a link what it is. Only a deployed page someone can click around (a preview or the live
+  site) is "a preview" or something to "take a peek" at; a GitHub link is "the pull request".
 - If something failed or is blocked, say so in the first sentence, along with what you need.
 - To address or tag someone, write `<@U…>` with their Slack user ID. A plain `@Name` is just
   text: it isn't highlighted and doesn't notify them. The sender's ID is in the chat-origin
