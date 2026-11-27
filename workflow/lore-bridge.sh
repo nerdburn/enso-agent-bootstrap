@@ -46,7 +46,9 @@ if msg.endswith("(enso stopped)"):
 elif "ended (error): enso-worker:" in msg:
     print("its remote worker hit an infrastructure error")')"
     if [ -n "$why" ]; then
-      "$ENSO_BIN" task resume "$ref" --workspace "$ENSO_WORKSPACE" \
+      # Not as this dispatch run: enso lets a run move only the task it claimed. The resume
+      # is the operator's standing policy above, carried out by dispatch.
+      env -u ENSO_RUN_ID "$ENSO_BIN" task resume "$ref" --workspace "$ENSO_WORKSPACE" \
         --message "Resumed automatically: $why." >&2 \
         && echo "$ref: resumed ($why)" >&2 || true
     fi
