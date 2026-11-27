@@ -27,7 +27,7 @@ stages:
 - name: build
   inputs: [request, pm]
   worktree: true
-  max_repairs: 2
+  max_repairs: 8   # counted over the task's life, returns included
   output: The candidate commits, what changed, tests added, docs touched.
   instructions: Implement the brief in the task worktree. Commit everything; never push.
   checks:
