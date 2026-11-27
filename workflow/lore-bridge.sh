@@ -34,8 +34,9 @@ d = json.load(sys.stdin); h = d.get("handoff") or {}; msg = str(h.get("message",
 if h.get("actor") != "enso" or h.get("to_stage") != "blocked":
     sys.exit(0)
 since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)
-recent = sum(1 for e in d.get("events") or [] if "Resumed automatically" in str(e.get("message"))
-             and dt.datetime.fromisoformat(e["created_at"]) > since)
+def recent(reason):  # automatic resumes for this same reason in the last 6 hours
+    return sum(1 for e in d.get("events") or [] if f"Resumed automatically: {reason}" in str(e.get("message"))
+               and dt.datetime.fromisoformat(e["created_at"]) > since)
 why = ""
 if msg.endswith("(enso stopped)"):
     why = "a restart of enso interrupted its run"
@@ -47,11 +48,14 @@ elif msg.startswith("Changed tests or check files need approval"):
     why = "approval"
 elif msg.startswith("Verification budget exhausted"):
     why = "budget"
-if why == "budget" and recent >= 3:
+BUDGET = "its attempts went to worker errors or approval gates"
+if why == "budget" and recent(BUDGET) >= 3:
     print("stuck|it keeps running out of attempts")
 elif why in ("approval", "budget") or not why:
     print(why)
-elif recent >= 3:
+elif why.startswith("the workflow was updated"):
+    print(why)  # caused by an operator change, not a fault: never capped
+elif recent(why) >= 3:
     print("stuck|" + why)  # the operator hears once; see below
 else:
     print(why)')"
