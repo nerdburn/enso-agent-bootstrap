@@ -5,7 +5,8 @@
 # trusted start, so the edited-tests check still sees only the task's own changes.
 #
 # Best effort: a hook that failed would hold the task. A conflict leaves the branch as it
-# is, and the note tells Build; the pull request shows the conflict to resolve.
+# is, and the note asks Build to rebase and resolve it; dispatch then clears the base's
+# test edits from the approval gate (lore-bridge.sh).
 set -euo pipefail
 # shellcheck source=/dev/null
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
@@ -22,7 +23,7 @@ if ! out="$(env -u ENSO_RUN_ID "$ENSO_BIN" task rebase "$ENSO_TASK" --workspace 
   case "$out" in
     *conflicts*)
       env -u ENSO_RUN_ID "$ENSO_BIN" task note "$ENSO_TASK" --workspace "$ENSO_WORKSPACE" \
-        "Could not move this branch onto the latest $WORKFLOW_BASE (${out#*conflicts: }). Build on it as it is; the pull request will show the conflict." >/dev/null 2>&1 || true ;;
+        "Could not move this branch onto the latest $WORKFLOW_BASE: conflicts in ${out#*conflicts: }. Rebase onto origin/$WORKFLOW_BASE yourself and resolve them before handing off; the test edits that come from $WORKFLOW_BASE are cleared automatically." >/dev/null 2>&1 || true ;;
   esac
 fi
 echo "$out"

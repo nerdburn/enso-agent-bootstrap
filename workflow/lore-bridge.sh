@@ -23,6 +23,7 @@ if [ "$cmd" = dispatch ]; then
   #    …") while its sandbox may still be working; the next run adopts the sandbox.
   #  - an operator changed the workflow while a run worked ("workflow changed during
   #    execution"): enso refuses that handoff; the next run hands the work off again.
+  #  - edited tests that came from the base, not the task (see below).
   # At most 3 automatic resumes per task in 6 hours, so a persistent fault reaches a person.
   # A resume refused because the block's hooks are still pending is retried next run.
   for ref in $("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
@@ -42,7 +43,20 @@ if msg.endswith("(enso stopped)"):
 elif "ended (error): enso-worker:" in msg:
     print("its remote worker hit an infrastructure error")
 elif msg.startswith("workflow changed during execution"):
-    print("the workflow was updated while its run was working")')"
+    print("the workflow was updated while its run was working")
+elif msg.startswith("Changed tests or check files need approval"):
+    print("approval")')"
+    if [ "$why" = approval ]; then
+      # Build rebased onto the base itself (resolving conflicts the after:build hook could
+      # not), so the base's own test edits look like the task's. `task rebase` moves the
+      # trusted start to the base it now contains; then only the task's own edits count.
+      # Its own edits, if any, block again on the next handoff and wait for a person.
+      why=""
+      if env -u ENSO_RUN_ID "$ENSO_BIN" task rebase "$ref" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null \
+          | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("changed") else 1)'; then
+        why="its branch now contains the latest $WORKFLOW_BASE, so only its own test edits count"
+      fi
+    fi
     if [ -n "$why" ]; then
       # Not as this dispatch run: enso lets a run move only the task it claimed. The resume
       # is the operator's standing policy above, carried out by dispatch.
