@@ -150,6 +150,7 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # WORKFLOW_CHANNEL=""            # C… channel for questions and signoff
 # WORKFLOW_APPROVERS=""          # Slack member IDs who can sign off
 # WORKFLOW_APPROVER_LABEL=""     # how prompts name them, e.g. "Kristin (<@U…>)"
+# WORKFLOW_DELEGATES=""          # also may sign off, not mentioned: "Shawn (<@U…>), on Kristin's behalf"
 # LORE_ASSIGNEE=""               # Lore assignee whose tickets are admitted (default AGENT_NAME)
 # WORKFLOW_WIP_LIMIT=3           # active tasks before dispatch stops admitting
 # WORKFLOW_MAX_CONCURRENCY=2     # enso stage runs at once for the project

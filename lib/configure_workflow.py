@@ -87,6 +87,10 @@ def main() -> None:
     base = env("WORKFLOW_BASE")
     approvers = env("WORKFLOW_APPROVERS").split()
     approver_label = env("WORKFLOW_APPROVER_LABEL", " and ".join(f"<@{u}>" for u in approvers))
+    # People who may also sign off without being mentioned on every notice (an operator
+    # approving on the approver's behalf): "Shawn (<@U…>), on Kristin's behalf".
+    delegates = env("WORKFLOW_DELEGATES")
+    signoff_label = f"{approver_label}, or {delegates}" if delegates else approver_label
     agent = env("WORKFLOW_AGENT_SPEC")
     review_agent = env("WORKFLOW_REVIEW_AGENT", agent)
     lore_project = env("LORE_PROJECT")
@@ -222,6 +226,7 @@ def main() -> None:
         LORE_ASSIGNEE=assignee,
         WORKFLOW_PROJECT=key,
         APPROVER_LABEL=approver_label,
+        SIGNOFF_LABEL=signoff_label,
         LORE_HOLDER=holder,
         LORE_PROJECT=lore_project,
     )

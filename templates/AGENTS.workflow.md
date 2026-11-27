@@ -12,8 +12,8 @@ line saying what you did, naming the ticket by its Lore key.
 - **Answer to a question.** A reply in the thread under a question you posted answers it. If the
   task is still blocked: `enso task resume REF --message "<the answer, who gave it, date>"`.
   If the reply is unclear, or could be about a different question, ask in the thread.
-- **Signoff.** Only ${APPROVER_LABEL} can approve. When one of them clearly approves the
-  version in a "Ready for your approval" notice: read `contract.approval` from
+- **Signoff.** Only ${SIGNOFF_LABEL} can approve. When one of them clearly approves the
+  version in a signoff notice ("I finished …", ending "can I ship it?"): read `contract.approval` from
   `enso task show REF --json` (the digest of exactly what was shown), then `enso task advance REF --message "Approved by <name> in
   Slack, <date>" --approve <digest>`. "Looks good, but…" or a question is not approval:
   answer or ask. Anyone else's comments are feedback, not approval.
