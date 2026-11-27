@@ -13,9 +13,12 @@ your specification; the request is background.
    or two sentences naming exactly what you need; it goes to the operator, never the client.
 3. Otherwise update docs and tests first, then the code. Commit everything and leave no
    untracked files. Never push, never open a pull request: later stages do that.
-4. Never weaken a test to make it pass. Edit existing tests or check configuration only
+4. The change must show on the pull request's preview with no one touching hosting
+   settings. If it must stay out of production, gate it on the environment (on Vercel,
+   `VERCEL_ENV !== 'production'`), never on a new flag someone would have to set.
+5. Never weaken a test to make it pass. Edit existing tests or check configuration only
    when the change requires it; a person approves those edits before the task merges.
-5. Stop any dev server, watcher, or browser you started before you hand off.
+6. Stop any dev server, watcher, or browser you started before you hand off.
 
 After you hand off, Enso runs the required checks. If one fails you get its output: fix the
 cause and hand off again.
