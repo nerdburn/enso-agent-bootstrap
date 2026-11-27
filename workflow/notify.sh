@@ -58,7 +58,7 @@ print(out[:700])')"
     } | "$ENSO_BIN" message send - --to "slack:$WORKFLOW_CHANNEL" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null)" \
       || { echo "notify.sh: signoff not sent: $ref" >&2; exit 0; }
     # QA's Before/After screenshots (task refs of kind path) go into the notice's thread.
-    thread="$(python3 -c 'import json, sys; print(json.loads(sys.argv[1]).get("message_id") or "")' "$receipt" 2>/dev/null || true)"
+    thread="$(python3 -c 'import json, sys; r = json.loads(sys.argv[1]); print(r.get("ts") or r.get("message_id") or "")' "$receipt" 2>/dev/null || true)"
     shots="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, os, re, sys
 seen = []
 for r in json.load(sys.stdin).get("refs") or []:
@@ -72,7 +72,7 @@ def pair(p):  # before.png, after.png, before-x.png, after-x.png
     return (rest.startswith("-") or rest.startswith("_"), rest, not base.startswith("before"))
 print("\n".join(sorted(seen, key=pair)[:6]))')"
     if [ -n "$thread" ] && [ -n "$shots" ]; then
-      mapfile -t files <<<"$shots"
+      files=(); while IFS= read -r f; do files+=("$f"); done <<<"$shots"
       SLACK_UPLOAD_COMMENT="Before and after, from the preview:" \
         python3 "$here/slack-upload.py" "$WORKFLOW_CHANNEL" "$thread" "${files[@]}" >&2 \
         || echo "notify.sh: screenshots not uploaded: $ref" >&2
