@@ -30,6 +30,9 @@ send() {  # send TARGET (empty: the operator) < text
 [ "$ENSO_TO_STAGE" = blocked ] && [ -z "${ENSO_RUN_ID:-}" ] && exit 0
 # A run cancelled by a restart of enso: dispatch resumes the task on its own.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == *"(enso stopped)" ]] && exit 0
+# Edited tests waiting for approval: dispatch's reviewer (rules-review.sh) approves sound
+# edits and sends the operator only the ones it escalates.
+[ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == "Changed tests or check files need approval:"* ]] && exit 0
 # A handoff refused because the operator changed the workflow mid-run: dispatch resumes it.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == "workflow changed during execution"* ]] && exit 0
 

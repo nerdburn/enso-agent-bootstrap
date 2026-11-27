@@ -55,6 +55,9 @@ elif msg.startswith("Changed tests or check files need approval"):
       if env -u ENSO_RUN_ID "$ENSO_BIN" task rebase "$ref" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null \
           | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("changed") else 1)'; then
         why="its branch now contains the latest $WORKFLOW_BASE, so only its own test edits count"
+      else
+        # The task's own edits: the reviewer approves sound ones and escalates the rest.
+        "$here/rules-review.sh" "$ref" || true
       fi
     fi
     if [ -n "$why" ]; then
