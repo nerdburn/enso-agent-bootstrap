@@ -61,6 +61,7 @@ export LORE_ASSIGNEE="${LORE_ASSIGNEE:-$AGENT_NAME}"
 export LORE_HOLDER="${LORE_HOLDER:-enso:$(tr '[:upper:]' '[:lower:]' <<<"$AGENT_NAME")}"
 export LORE_MAX_NEW="${LORE_MAX_NEW:-1}"
 export WORKER_JOBS="${WORKER_JOBS:-}"   # stage jobs run by enso-worker (lib/worker.sh)
+export WORKER_PARALLEL="${WORKER_PARALLEL:-1}" WORKER_JOB_TIMEOUT="${WORKER_JOB_TIMEOUT:-10800}"
 
 python3 "$HERE/lib/configure_workflow.py"
 

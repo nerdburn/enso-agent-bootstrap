@@ -157,9 +157,11 @@ def remote_job() -> bool:
     job = os.environ.get("ENSO_JOB")
     if not job or not os.environ.get("ENSO_TASK") or not os.access(WORKER, os.X_OK):
         return False
+    base = job.rsplit("-", 1)[0] if job.rsplit("-", 1)[-1].isdigit() else job  # parallel copy marble-build-2
     try:
         with open(WORKER_JOBS) as fh:
-            return job in {line.strip() for line in fh if line.strip() and not line.startswith("#")}
+            listed = {line.strip() for line in fh if line.strip() and not line.startswith("#")}
+        return job in listed or base in listed
     except OSError:
         return False
 

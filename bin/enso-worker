@@ -413,7 +413,9 @@ def cmd_run(claude_args: list[str]) -> int:
     if not (task and run_id and worktree):
         log("needs ENSO_TASK, ENSO_RUN_ID and ENSO_TASK_DIR (a stage run with a worktree)")
         return 2
-    stage = slug(job.split(":")[-1].split("-")[-1]) or "stage"
+    # marble-build and its parallel copies (marble-build-2, …) share the stage name, so any
+    # copy adopts the task's sandbox.
+    stage = slug(re.sub(r"-\d+$", "", job.split(":")[-1]).split("-")[-1]) or "stage"
     name = f"w-{slug(task)}-{stage}-{slug(run_id)[:12]}"
     # The prompt names the worktree; the sandbox links that path to its checkout.
     snapshots = {}

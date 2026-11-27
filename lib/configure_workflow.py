@@ -189,6 +189,21 @@ def main() -> None:
         )
         if write(path, front + prompt):
             changed.append(path)
+        # enso runs one instance of a job at a time; a remote stage gets WORKER_PARALLEL
+        # identical jobs (<job>-2, <job>-3, …) so that many tasks build at once. Copies
+        # follow the main job's enabled state; copies past the count are disabled.
+        if f"{workspace}:{prefix}-{stage}" in os.environ.get("WORKER_JOBS", "").split():
+            parallel = max(1, int(env("WORKER_PARALLEL", "1")))
+            for copy in sorted(jobs_dir.glob(f"{prefix}-{stage}-[0-9]*")):
+                if copy.name.rsplit("-", 1)[-1].isdigit() and int(copy.name.rsplit("-", 1)[-1]) > parallel:
+                    job_md = copy / "JOB.md"
+                    if job_md.exists() and write(job_md, job_md.read_text().replace("enabled: true", "enabled: false", 1)):
+                        changed.append(job_md)
+            for n in range(2, parallel + 1):
+                copy_md = jobs_dir / f"{prefix}-{stage}-{n}" / "JOB.md"
+                copy_front = front.replace(f"name: {q(f'{name}: {stage}')}", f"name: {q(f'{name}: {stage} ({n})')}", 1)
+                if write(copy_md, copy_front + prompt):
+                    changed.append(copy_md)
 
     dispatch = jobs_dir / f"{prefix}-lore-dispatch" / "JOB.md"
     text = (
