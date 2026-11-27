@@ -30,6 +30,8 @@ send() {  # send TARGET (empty: the operator) < text
 [ "$ENSO_TO_STAGE" = blocked ] && [ -z "${ENSO_RUN_ID:-}" ] && exit 0
 # A run cancelled by a restart of enso: dispatch resumes the task on its own.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == *"(enso stopped)" ]] && exit 0
+# A handoff refused because the operator changed the workflow mid-run: dispatch resumes it.
+[ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == "workflow changed during execution"* ]] && exit 0
 
 # A question only the operator can answer (access, credentials): never to the client.
 if [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == Operator:* ]]; then

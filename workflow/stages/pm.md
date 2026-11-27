@@ -13,6 +13,9 @@ the ticket key is in the task title.
    - **Surfaces**: web, admin, API, mobile.
    - **Decisions**: each one with who made it, when, and where (Lore item, Slack, meeting).
    - **Notes for Build**: files, risks, data or migration concerns.
+   - **Do not merge** (only when the ticket says the work must never reach the base branch,
+     such as a preview or workshop branch): a `## Do not merge` heading with the reason. The
+     approved pull request is then left open for a person instead of merged.
    - **For the PR** (only when needed): anything the pull request must tell people, such as
      follow-ups for other teams or decisions still owed. Put it under a `## For the PR`
      heading; publish copies that section into the PR description as written.

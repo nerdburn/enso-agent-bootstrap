@@ -19,6 +19,11 @@ candidate="$(git rev-parse HEAD)"
 
 view() { gh pr view "$pr" -R "$WORKFLOW_REPO" --json "$1" --jq "$2"; }
 [ "$(view state .state)" = OPEN ] || result block "$pr is not open ($(view state .state))."
+# Work that must never merge (a preview or workshop branch): the PM brief says "Do not
+# merge". The approval stands; a person decides what happens to the pull request.
+if stage_output "$ENSO_TASK" pm | grep -qi 'do not merge'; then
+  result block "Operator: $pr is approved, but its brief says it must not merge, so I left it open. Merge or close it yourself, then finish the task (enso task drop, or resume it to merge after all)."
+fi
 remote_head="$(view headRefOid .headRefOid)"
 [ "$remote_head" = "$approved" ] \
   || result block "$pr head is ${remote_head:0:8}, not the approved ${approved:0:8}: someone pushed to the branch. A person should look; the change needs review and approval again."

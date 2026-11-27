@@ -21,6 +21,8 @@ if [ "$cmd" = dispatch ]; then
   #  - a restart of enso cancels in-flight stage runs ("… cancelled (enso stopped)");
   #  - a remote worker's run died on an infrastructure error ("ended (error): enso-worker:
   #    …") while its sandbox may still be working; the next run adopts the sandbox.
+  #  - an operator changed the workflow while a run worked ("workflow changed during
+  #    execution"): enso refuses that handoff; the next run hands the work off again.
   # At most 3 automatic resumes per task in 6 hours, so a persistent fault reaches a person.
   # A resume refused because the block's hooks are still pending is retried next run.
   for ref in $("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
@@ -38,7 +40,9 @@ if recent >= 3:
 if msg.endswith("(enso stopped)"):
     print("a restart of enso interrupted its run")
 elif "ended (error): enso-worker:" in msg:
-    print("its remote worker hit an infrastructure error")')"
+    print("its remote worker hit an infrastructure error")
+elif msg.startswith("workflow changed during execution"):
+    print("the workflow was updated while its run was working")')"
     if [ -n "$why" ]; then
       # Not as this dispatch run: enso lets a run move only the task it claimed. The resume
       # is the operator's standing policy above, carried out by dispatch.
