@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+"""enso-worker: run an enso stage's agent turn in a Vercel Sandbox instead of on this VM.
+
+    enso-worker run <claude args…>      claude-gate execs this for jobs listed in
+                                        ~/.config/enso-agent/worker-jobs
+    enso-worker check -- <command>      a stage check, run in the task's sandbox
+    enso-worker sweep                   stop sandboxes whose task left its stage
+    enso-worker ls                      this VM's worker sandboxes
+
+One sandbox per stage run, named w-<task>-<stage>-<run>, tagged task/stage/run.
+Its turn runs detached inside the sandbox, so it survives this VM restarting:
+a later run of the same task adopts a sandbox that is still running instead of
+starting a second one, streams its output, and collects its result.
+
+Inside the sandbox the repository is cloned from GitHub (the network policy
+adds this VM's GitHub token to requests for github.com; the token never enters
+the sandbox), the task branch arrives as a git bundle, and `enso` is a stub
+that records task moves. When the turn ends the worker fetches the new commits
+into the task worktree and replays the recorded moves here, inside the run.
+
+Settings: ~/.config/enso-agent/worker.env (KEY=value lines):
+  CLAUDE_WORKER_TOKEN   long-lived Claude token (`claude setup-token`)   required
+  WORKER_SCOPE          Vercel team, e.g. inputlogic                     required
+  WORKER_PROJECT        Vercel project holding the sandboxes             required
+  WORKER_VCPUS=4  WORKER_TIMEOUT=4h  WORKER_MAX=5  WORKER_SETUP="npm ci --no-audit --no-fund"
+  WORKER_AGENT          command run in the sandbox instead of claude (tests only)
+Standard library only.
+"""
+from __future__ import annotations
+
+import base64
+import fcntl
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+HOME = Path.home()
+CONFIG = HOME / ".config/enso-agent"
+STATE = Path(os.environ.get("XDG_STATE_HOME") or HOME / ".local/state") / "enso-worker"
+ENSO = os.environ.get("ENSO_BIN") or str(HOME / ".local/bin/enso")
+RUN = "/vercel/run"          # per-sandbox control files
+REPO = "/vercel/repo"        # the checkout the agent works in
+POLL = 3.0
+REPLAYED = {"advance", "return", "block", "note", "ref"}
+
+
+def log(msg: str) -> None:
+    print(f"enso-worker: {msg}", file=sys.stderr, flush=True)
+
+
+def settings() -> dict[str, str]:
+    values = {"WORKER_VCPUS": "4", "WORKER_TIMEOUT": "4h", "WORKER_MAX": "5",
+              "WORKER_SETUP": "npm ci --no-audit --no-fund"}
+    path = CONFIG / "worker.env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            key, sep, value = line.strip().partition("=")
+            if sep and key and not key.startswith("#"):
+                values[key.removeprefix("export ").strip()] = value.strip().strip("'\"")
+    values.update({k: v for k, v in os.environ.items() if k.startswith("WORKER_")})
+    return values
+
+
+CFG = settings()
+# The Vercel CLI reads this; set by `worker-token vercel` when the VM's own login lacks the team.
+VERCEL_ENV = {"VERCEL_AUTH_TOKEN": CFG["VERCEL_AUTH_TOKEN"]} if CFG.get("VERCEL_AUTH_TOKEN") else {}
+
+
+# The CLI's own error lines only ("Error: fetch failed", "├▶ status code: 503"), never a
+# remote command's output, so a failing check is not rerun.
+TRANSIENT = re.compile(r"^Error: (fetch failed|Stream connection was interrupted|.*\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up))"
+                       r"|status code: (429|50[234])\b", re.M)
+
+
+def vercel(*args: str, check: bool = True, capture: bool = True, env: dict | None = None,
+           timeout: float | None = None) -> subprocess.CompletedProcess:
+    sub, rest = args[0], list(args[1:])
+    cmd = ["vercel", "sandbox", sub, "--scope", CFG["WORKER_SCOPE"], "--project", CFG["WORKER_PROJECT"], *rest]
+    # Transient API/network errors are retried. Every call is safe to repeat except
+    # create (a duplicate name fails anyway) and start_turn's launch, which is guarded.
+    for attempt in range(1 if sub == "create" else 4):
+        if attempt:
+            log(f"vercel sandbox {sub}: transient error, retry {attempt} in {5 * 3 ** (attempt - 1)}s")
+            time.sleep(5 * 3 ** (attempt - 1))
+        proc = subprocess.run(cmd, capture_output=capture, text=True, stdin=subprocess.DEVNULL,
+                              env={**os.environ, **VERCEL_ENV, **(env or {})}, timeout=timeout)
+        err = (proc.stderr or "") if capture else ""
+        if proc.returncode == 0 or not TRANSIENT.search(err[-2000:]):
+            break
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"vercel sandbox {sub} failed ({proc.returncode}): {(proc.stderr or proc.stdout or '')[-600:]}")
+    return proc
+
+
+def sh(name: str, script: str, *, check: bool = True, timeout: str | None = None,
+       env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    args = ["exec", name]
+    if timeout:
+        args += ["--timeout", timeout]
+    for key, value in (env or {}).items():
+        args += ["--env", f"{key}={value}"]
+    return vercel(*args, "--", "bash", "-lc", script, check=check)
+
+
+def output(proc: subprocess.CompletedProcess) -> str:
+    """exec's stdout is exactly the command's; the CLI's banner goes to stderr."""
+    return proc.stdout
+
+
+def sandboxes(prefix: str = "w-", **tags: str) -> list[dict[str, str]]:
+    args = ["list", "--name-prefix", prefix]
+    for key, value in tags.items():
+        args += ["--tag", f"{key}={value}"]
+    rows = []
+    for line in vercel(*args).stdout.splitlines():
+        cols = line.split()
+        if cols and cols[0].startswith(prefix) and len(cols) > 1:
+            rows.append({"name": cols[0], "status": cols[1]})
+    return rows
+
+
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def git(cwd: str, *args: str, check: bool = True) -> str:
+    proc = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True)
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args[:2])}: {proc.stderr.strip()[-400:]}")
+    return proc.stdout.strip()
+
+
+def gh_auth_header() -> str:
+    token = os.environ.get("GH_TOKEN") or subprocess.run(["gh", "auth", "token"], capture_output=True, text=True).stdout.strip()
+    if not token:
+        raise RuntimeError("no GitHub token (GH_TOKEN or gh auth) for the sandbox's network policy")
+    return "Basic " + base64.b64encode(f"x-access-token:{token}".encode()).decode()
+
+
+class Slot:
+    """At most WORKER_MAX sandboxes running turns at once from this VM."""
+
+    def __enter__(self):
+        STATE.mkdir(parents=True, exist_ok=True)
+        n = max(1, int(CFG["WORKER_MAX"]))
+        while True:
+            for i in range(n):
+                fd = os.open(STATE / f"slot-{i}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.fd = fd
+                    return self
+                except BlockingIOError:
+                    os.close(fd)
+            time.sleep(5)
+
+    def __exit__(self, *_):
+        os.close(self.fd)
+
+
+# ── files sent into the sandbox ────────────────────────────────────────────────
+
+ENSO_STUB = r'''#!/usr/bin/env python3
+"""enso, as seen by a remote worker: task moves are recorded and applied by the manager
+when this turn ends; `task show` and `workflow show` answer from a snapshot."""
+import json, os, sys
+run = os.environ["WORKER_TURN_DIR"]
+args = sys.argv[1:]
+words = [a for a in args if not a.startswith("-")]
+if words[:2] == ["task", "show"] or words[:2] == ["workflow", "show"]:
+    name = ("task" if words[0] == "task" else "workflow") + ("-show.json" if "--json" in args else "-show.txt")
+    path = os.path.join(os.path.dirname(run), name)
+    sys.stdout.write(open(path).read() if os.path.exists(path) else "")
+    sys.exit(0)
+if words[:1] == ["task"] and len(words) > 1 and words[1] in {"advance", "return", "block", "note", "ref"}:
+    call = {"argv": args, "files": {}}
+    if "-" in args:
+        call["stdin"] = sys.stdin.read()
+    for flag in ("--output-file", "--message-file"):
+        if flag in args:
+            path = args[args.index(flag) + 1]
+            call["files"][path] = open(path).read()
+    with open(os.path.join(run, "calls.jsonl"), "a") as fh:
+        fh.write(json.dumps(call) + "\n")
+    print(f"{words[1]} {words[2] if len(words) > 2 else ''}: recorded; applied when this turn ends. End your turn now.")
+    sys.exit(0)
+print("enso: not available in a remote worker; only task show/advance/return/block/note/ref", file=sys.stderr)
+sys.exit(0)
+'''
+
+TURN_SH = r'''#!/usr/bin/env bash
+# One agent turn, detached from the manager: setup on the first turn, then the agent,
+# then a bundle of new commits. Files: $T/{args.json,stream.jsonl,stderr.log,exit,done}.
+set -uo pipefail
+T="$1"; R=/vercel/run; cd "$R"
+export PATH="$R/bin:$HOME/.local/bin:$PATH" WORKER_TURN_DIR="$T"
+export CLAUDE_CODE_OAUTH_TOKEN="$(cat "$R/claude-token" 2>/dev/null)"
+{
+if [ ! -d /vercel/repo/.git ]; then
+  . "$R/repo.env"
+  command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash
+  git config --global user.name "$GIT_NAME"; git config --global user.email "$GIT_EMAIL"
+  git clone -q --filter=blob:none "$REPO_URL" /vercel/repo
+  cd /vercel/repo
+  if [ -f "$R/task.bundle" ]; then git fetch -q "$R/task.bundle" "refs/heads/$BRANCH:refs/heads/$BRANCH"; git checkout -q "$BRANCH";
+  else git checkout -q -B "$BRANCH" "$START"; fi
+  [ "$(git rev-parse HEAD)" = "$START" ] || { echo "checkout is not at $START" >&2; echo 70 > "$T/exit"; touch "$T/done"; exit 70; }
+  sudo mkdir -p "$(dirname "$TASK_DIR")" && sudo ln -sfn /vercel/repo "$TASK_DIR"
+  [ -n "$SETUP" ] && bash -lc "$SETUP"
+fi
+} >>"$R/setup.log" 2>&1
+cd /vercel/repo
+git rev-parse HEAD > "$T/start"
+python3 - "$T/args.json" > "$T/argv" <<'PY'
+import json, shlex, sys
+print(" ".join(shlex.quote(a) for a in json.load(open(sys.argv[1]))))
+PY
+eval "${WORKER_AGENT:-claude} $(cat "$T/argv")" >"$T/stream.jsonl" 2>"$T/stderr.log"
+echo $? > "$T/exit"
+if [ "$(git rev-parse HEAD)" != "$(cat "$T/start")" ]; then
+  git bundle create "$T/out.bundle" "$(git branch --show-current)" "^$(cat "$T/start")" >/dev/null 2>&1
+fi
+git status --porcelain > "$T/dirty"
+touch "$T/done"
+'''
+
+
+# ── run: one stage turn ─────────────────────────────────────────────────────────
+
+def turns(name: str) -> list[int]:
+    out = output(sh(name, f"ls {RUN} 2>/dev/null | grep -E '^turn-[0-9]+$' || true"))
+    return sorted(int(x.split("-")[1]) for x in out.split())
+
+
+def turn_done(name: str, turn: int) -> bool:
+    return sh(name, f"test -f {RUN}/turn-{turn}/done", check=False).returncode == 0
+
+
+def create(name: str, task: str, stage: str, run_id: str, worktree: str) -> None:
+    head = git(worktree, "rev-parse", "HEAD")
+    branch = git(worktree, "branch", "--show-current") or f"enso/{task}"
+    remote = git(worktree, "remote", "get-url", "origin")
+    match = re.search(r"github\.com[:/](.+?)(?:\.git)?$", remote)
+    if not match:
+        raise RuntimeError(f"origin is not a GitHub repository: {remote}")
+    repo_url = f"https://github.com/{match.group(1)}.git"
+    log(f"creating {name} ({CFG['WORKER_VCPUS']} vCPUs)")
+    vercel("create", "--name", name, "--timeout", CFG["WORKER_TIMEOUT"], "--vcpus", CFG["WORKER_VCPUS"],
+           "--tag", f"task={task}", "--tag", f"stage={stage}", "--tag", f"run={run_id}",
+           "--allowed-domain", "*", "--request-header-from-env", "github.com:Authorization=WORKER_GH_AUTH",
+           env={"WORKER_GH_AUTH": gh_auth_header()})
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / "bin").mkdir()
+        (t / "bin/enso").write_text(ENSO_STUB)
+        (t / "turn.sh").write_text(TURN_SH)
+        (t / "claude-token").write_text(CFG.get("CLAUDE_WORKER_TOKEN", ""))
+        (t / "repo.env").write_text("".join(f"{k}={shlex.quote(v)}\n" for k, v in {
+            "REPO_URL": repo_url, "BRANCH": branch, "START": head, "TASK_DIR": worktree,
+            "SETUP": CFG["WORKER_SETUP"],
+            "GIT_NAME": git(worktree, "config", "user.name", check=False) or "enso worker",
+            "GIT_EMAIL": git(worktree, "config", "user.email", check=False) or "enso-worker@users.noreply.github.com",
+        }.items()))
+        # Only commits GitHub lacks travel as a bundle; the clone already has the rest.
+        git(worktree, "fetch", "-q", "origin", check=False)
+        if git(worktree, "rev-list", "--count", "HEAD", "--not", "--remotes=origin", check=False) not in ("", "0"):
+            git(worktree, "bundle", "create", str(t / "task.bundle"), branch, "--not", "--remotes=origin")
+        subprocess.run(["tar", "-czf", str(t.parent / f"{name}.tgz"), "-C", tmp, "."], check=True)
+        archive = t.parent / f"{name}.tgz"
+    try:
+        sh(name, f"sudo mkdir -p {RUN} && sudo chown $(id -u):$(id -g) {RUN}")
+        vercel("copy", str(archive), f"{name}:{RUN}/init.tgz")
+        sh(name, f"cd {RUN} && tar -xzf init.tgz && rm init.tgz && chmod 700 bin/enso turn.sh && chmod 600 claude-token")
+    finally:
+        archive.unlink(missing_ok=True)
+
+
+def start_turn(name: str, turn: int, claude_args: list[str], snapshots: dict[str, str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / "args.json").write_text(json.dumps(claude_args))
+        for file, text in snapshots.items():
+            (t / file).write_text(text)
+        archive = t / "turn.tgz"
+        subprocess.run(["tar", "-czf", str(archive), "-C", tmp, "args.json", *snapshots], check=True)
+        vercel("copy", str(archive), f"{name}:{RUN}/turn.tgz")
+    d = f"{RUN}/turn-{turn}"
+    agent = f"WORKER_AGENT={shlex.quote(CFG['WORKER_AGENT'])} " if CFG.get("WORKER_AGENT") else ""
+    # mkdir is the launch lock: a retried exec (the CLI can report failure after the turn
+    # started) finds it and launches nothing.
+    sh(name, f"mkdir -p {d} && if mkdir {d}/.launched 2>/dev/null; then cd {RUN} && tar -xzf turn.tgz "
+             f"&& rm turn.tgz && mv args.json {d}/ "
+             f"&& {{ {agent}setsid nohup bash {RUN}/turn.sh {d} >/dev/null 2>&1 < /dev/null & }}; fi; echo started")
+    log(f"{name}: turn {turn} started")
+
+
+def requested_session(args: list[str]) -> str | None:
+    """The Claude session id enso asked for (--session-id X / --resume X)."""
+    for i, arg in enumerate(args):
+        if arg == "--":
+            break
+        for flag in ("--session-id", "--resume"):
+            if arg == flag and i + 1 < len(args):
+                return args[i + 1]
+            if arg.startswith(f"{flag}="):
+                return arg.split("=", 1)[1]
+    return None
+
+
+def as_session(chunk: bytes, session: str | None) -> bytes:
+    """Rewrite session_id in whole stream-json lines to SESSION. An adopted turn was started
+    by an earlier run (before a restart) under that run's session id; enso refuses a stream
+    that announces a session other than the one it requested for this run."""
+    if not session or b'"session_id"' not in chunk:
+        return chunk
+    out = []
+    for line in chunk.split(b"\n"):
+        if b'"session_id"' in line:
+            try:
+                event = json.loads(line)
+                if isinstance(event, dict) and event.get("session_id") not in (None, session):
+                    event["session_id"] = session
+                    line = json.dumps(event, separators=(",", ":")).encode()
+            except ValueError:
+                pass
+        out.append(line)
+    return b"\n".join(out)
+
+
+def stream(name: str, turn: int, session: str | None = None) -> int:
+    """Copy the turn's stream-json to stdout until it is done; return the agent's exit code."""
+    d, offset, misses = f"{RUN}/turn-{turn}", 0, 0
+    # Status first (one line), then the new bytes; read only up to the last newline so a
+    # half-written line waits for the next poll.
+    script = (f"s=$(test -f {d}/done && cat {d}/exit || echo -); echo \"$s\"; f={d}/stream.jsonl; "
+              f"[ -f $f ] && tail -c +{{offset}} $f || true")
+    cmd = ["vercel", "sandbox", "exec", "--scope", CFG["WORKER_SCOPE"], "--project", CFG["WORKER_PROJECT"], name, "--",
+           "bash", "-lc"]
+    while True:
+        proc = subprocess.run([*cmd, script.format(offset=offset + 1)], capture_output=True, stdin=subprocess.DEVNULL,
+                              env={**os.environ, **VERCEL_ENV})
+        if proc.returncode != 0:
+            misses += 1
+            if misses > 20:
+                raise RuntimeError(f"lost {name}: {proc.stderr.decode(errors='replace')[-300:]}")
+            time.sleep(POLL * 2)
+            continue
+        misses = 0
+        status, _, data = proc.stdout.partition(b"\n")
+        cut = data.rfind(b"\n") + 1
+        finished = status.strip() not in (b"-", b"")
+        chunk = data if finished else data[:cut]
+        if chunk:
+            sys.stdout.buffer.write(as_session(chunk, session))
+            sys.stdout.flush()
+            offset += len(chunk)
+        if finished:
+            return int(status.strip() or 1)
+        time.sleep(POLL)
+
+
+def collect(name: str, turn: int, worktree: str) -> bool:
+    """Fetch the turn's commits into the worktree, then replay its recorded task moves.
+    True when a replayed move succeeded, i.e. the turn handed the task on."""
+    moved = False
+    d = f"{RUN}/turn-{turn}"
+    dirty = output(sh(name, f"cat {d}/dirty 2>/dev/null || true")).strip()
+    if dirty:
+        log(f"{name}: left uncommitted changes, not collected:\n{dirty}")
+    if sh(name, f"test -f {d}/out.bundle", check=False).returncode == 0:
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = os.path.join(tmp, "out.bundle")
+            vercel("copy", f"{name}:{d}/out.bundle", bundle)
+            branch = git(worktree, "branch", "--show-current")
+            git(worktree, "fetch", "-q", bundle, f"refs/heads/{branch}")
+            start = output(sh(name, f"cat {d}/start 2>/dev/null || true")).strip()
+            if subprocess.run(["git", "-C", worktree, "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"]).returncode == 0:
+                git(worktree, "merge", "-q", "--ff-only", "FETCH_HEAD")
+            elif start and git(worktree, "rev-parse", "HEAD") == start:
+                # The agent rewrote the branch (rebased onto the base to resolve conflicts)
+                # and nothing changed here since the turn began: take its branch as it is.
+                log(f"{name}: branch rewritten in the sandbox (rebased); taking it")
+                git(worktree, "reset", "-q", "--hard", "FETCH_HEAD")
+            else:
+                raise RuntimeError(f"{name}: the sandbox branch and {branch} here both moved; a person should look")
+            log(f"{name}: worktree now at {git(worktree, 'rev-parse', '--short', 'HEAD')}")
+    calls = output(sh(name, f"cat {d}/calls.jsonl 2>/dev/null || true"))
+    for line in calls.splitlines():
+        if not line.strip():
+            continue
+        call = json.loads(line)
+        argv = list(call["argv"])
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, arg in enumerate(argv):
+                if arg in call.get("files", {}):
+                    local = os.path.join(tmp, os.path.basename(arg) or "file")
+                    Path(local).write_text(call["files"][arg])
+                    argv[i] = local
+            proc = subprocess.run([ENSO, *argv], input=call.get("stdin"), text=True, capture_output=True, cwd=worktree)
+        log(f"replayed enso {' '.join(argv[:3])}: rc {proc.returncode} {(proc.stdout or proc.stderr).strip()[:300]}")
+        moved = moved or (proc.returncode == 0 and argv[1:2] and argv[1] in {"advance", "return", "block"})
+    sh(name, f"touch {d}/collected", check=False)
+    return bool(moved)
+
+
+def sandbox_args(args: list[str]) -> list[str]:
+    """Drop options that point at files on this VM (MCP config, extra dirs, settings): they
+    do not exist in the sandbox, and the servers they name (lore over exe.dev) are not
+    reachable from it. --strict-mcp-config then leaves the worker with no MCP servers."""
+    dropped = {"--mcp-config", "--add-dir", "--settings"}
+    out, skip = [], False
+    for i, arg in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if arg == "--":
+            out.extend(args[i:])
+            break
+        if arg in dropped:
+            skip = True
+            continue
+        if any(arg.startswith(f"{flag}=") for flag in dropped):
+            continue
+        out.append(arg)
+    return out
+
+
+def cmd_run(claude_args: list[str]) -> int:
+    claude_args = sandbox_args(claude_args)
+    session = requested_session(claude_args)
+    task, run_id, job = os.environ.get("ENSO_TASK"), os.environ.get("ENSO_RUN_ID"), os.environ.get("ENSO_JOB", "")
+    worktree = os.environ.get("ENSO_TASK_DIR")
+    if not (task and run_id and worktree):
+        log("needs ENSO_TASK, ENSO_RUN_ID and ENSO_TASK_DIR (a stage run with a worktree)")
+        return 2
+    # marble-build and its parallel copies (marble-build-2, …) share the stage name, so any
+    # copy adopts the task's sandbox.
+    stage = slug(re.sub(r"-\d+$", "", job.split(":")[-1]).split("-")[-1]) or "stage"
+    name = f"w-{slug(task)}-{stage}-{slug(run_id)[:12]}"
+    # The prompt names the worktree; the sandbox links that path to its checkout.
+    snapshots = {}
+    for kind, args in (("task-show.json", ["task", "show", task, "--json"]), ("task-show.txt", ["task", "show", task]),
+                       ("workflow-show.json", ["workflow", "show", task, "--json"])):
+        snapshots[kind] = subprocess.run([ENSO, *args], capture_output=True, text=True).stdout
+    with Slot():
+        mine = sandboxes(f"w-{slug(task)}-{stage}-")
+        running = [s for s in mine if s["status"] == "running"]
+        current = next((s for s in running if s["name"] == name), None)
+        adopted = current or (running[0] if running else None)
+        for other in running:
+            if adopted and other["name"] != adopted["name"]:
+                log(f"stopping extra sandbox {other['name']}")
+                vercel("stop", other["name"], check=False)
+        if adopted is None:
+            create(name, task, stage, run_id, worktree)
+            target, turn = name, 1
+            start_turn(target, turn, claude_args, snapshots)
+        else:
+            target = adopted["name"]
+            done = turns(target)
+            last = done[-1] if done else 0
+            if last and not turn_done(target, last):
+                log(f"adopting {target}: turn {last} still running")
+                turn = last
+            else:
+                if last and sh(target, f"test -f {RUN}/turn-{last}/collected", check=False).returncode != 0:
+                    log(f"adopting {target}: collecting finished turn {last}")
+                    if collect(target, last, worktree):
+                        # That turn already handed the task on; report it as this run's turn.
+                        log(f"turn {last} handed the task on; not starting another")
+                        return stream(target, last, session)
+                turn = last + 1
+                local = git(worktree, "rev-parse", "HEAD")
+                remote = output(sh(target, f"git -C {REPO} rev-parse HEAD", check=False)).strip()
+                if remote != local:
+                    # The branch moved here (rebased onto a newer base): start from it afresh.
+                    log(f"{target} is at {remote[:8]}, the branch at {local[:8]}; starting a new sandbox")
+                    vercel("stop", target, check=False)
+                    target, turn = f"{name}-{int(time.time()) % 100000}", 1
+                    create(target, task, stage, run_id, worktree)
+                start_turn(target, turn, claude_args, snapshots)
+        code = stream(target, turn, session)
+        collect(target, turn, worktree)
+        return code
+
+
+def cmd_check(command: list[str]) -> int:
+    task, candidate = os.environ.get("ENSO_TASK"), os.environ.get("ENSO_CANDIDATE", "")
+    live = [s for s in sandboxes(f"w-{slug(task or '')}-") if s["status"] == "running"]
+    if not live:
+        log(f"no running sandbox for {task}; the check cannot run remotely")
+        return 3
+    name = live[0]["name"]
+    head = output(sh(name, f"git -C {REPO} rev-parse HEAD")).strip()
+    if candidate and head != candidate:
+        log(f"{name} is at {head[:8]}, not the candidate {candidate[:8]}")
+        return 4
+    proc = sh(name, f"cd {REPO} && {' '.join(shlex.quote(c) for c in command)}", check=False, timeout="20m")
+    sys.stdout.write(output(proc) + "\n")
+    sys.stderr.write(proc.stderr[-4000:])
+    return proc.returncode
+
+
+def cmd_sweep() -> int:
+    """Stop running sandboxes whose task is no longer in the stage they were made for."""
+    jobs = CONFIG / "worker-jobs"
+    workspaces = {os.environ.get("ENSO_WORKSPACE", "")} | {
+        line.split(":", 1)[0] for line in (jobs.read_text().split() if jobs.exists() else []) if ":" in line}
+    workspaces.discard("")
+    for box in sandboxes():
+        if box["status"] != "running":
+            continue
+        m = re.match(r"w-([a-z0-9]+-\d+)-([a-z0-9]+)-", box["name"])
+        if not m:
+            continue
+        ref, stage = m.group(1).upper(), m.group(2)
+        current = None
+        for ws in sorted(workspaces):
+            show = subprocess.run([ENSO, "task", "show", ref, "--workspace", ws, "--json"], capture_output=True, text=True)
+            try:
+                current = json.loads(show.stdout).get("stage")
+                break
+            except ValueError:
+                continue
+        if current is None:
+            log(f"{box['name']}: {ref} not found in {', '.join(sorted(workspaces)) or 'any workspace'}; left running")
+            continue
+        if current not in (stage, "blocked"):
+            log(f"stopping {box['name']}: {ref} is at {current}")
+            vercel("stop", box["name"], check=False)
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 2
+    command, rest = sys.argv[1], sys.argv[2:]
+    if command == "run":
+        return cmd_run(rest)
+    if command == "check":
+        return cmd_check(rest[1:] if rest[:1] == ["--"] else rest)
+    if command == "sweep":
+        return cmd_sweep()
+    if command == "ls":
+        for box in sandboxes():
+            print(box["name"], box["status"])
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (RuntimeError, subprocess.SubprocessError) as exc:
+        log(str(exc))
+        sys.exit(1)

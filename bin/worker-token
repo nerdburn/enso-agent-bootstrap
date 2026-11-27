@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Store a token remote workers need, without it passing through chat or logs.
+# Run on the VM in an interactive terminal:
+#
+#   ssh -t <vm>.exe.xyz ~/.local/bin/worker-token claude   `claude setup-token` signs in (open its URL,
+#                                             approve as the agent's Claude seat, paste the
+#                                             code back), then paste the token it prints
+#   ssh -t <vm>.exe.xyz ~/.local/bin/worker-token vercel   paste a Vercel token that can use the
+#                                             WORKER_SCOPE team (vercel.com/account/tokens)
+#
+# Input is hidden; the token goes only into ~/.config/enso-agent/worker.env (mode 600).
+set -euo pipefail
+ENVF="$HOME/.config/enso-agent/worker.env"
+kind="${1:-claude}"
+[ -t 0 ] || { echo "worker-token: run it in an interactive terminal (ssh -t from your own terminal; Claude Code's ! prefix has no terminal)" >&2; exit 2; }
+case "$kind" in
+  claude)
+    key=CLAUDE_WORKER_TOKEN; pattern='sk-ant-*'
+    echo "Signing in with claude setup-token. Copy the token it prints at the end."
+    claude setup-token
+    echo ;;
+  vercel)
+    key=VERCEL_AUTH_TOKEN; pattern='?*'
+    echo "Create a token at https://vercel.com/account/tokens with access to the team the"
+    echo "workers use (WORKER_SCOPE in $ENVF), then paste it below." ;;
+  *) echo "usage: worker-token claude|vercel" >&2; exit 2 ;;
+esac
+read -rsp "Paste the token (input hidden): " token; echo
+# shellcheck disable=SC2254
+case "$token" in $pattern) ;; *) echo "worker-token: that does not look like a $kind token; nothing saved" >&2; exit 1 ;; esac
+mkdir -p "$(dirname "$ENVF")"; umask 077; touch "$ENVF"
+{ grep -v "^$key=" "$ENVF" || true; echo "$key=$token"; } > "$ENVF.tmp"
+mv "$ENVF.tmp" "$ENVF"; chmod 600 "$ENVF"
+echo "Saved $key to $ENVF. Remote workers use it from their next run."
+if [ "$kind" = vercel ]; then
+  scope="$(sed -n 's/^WORKER_SCOPE=//p' "$ENVF" | tail -1)"; project="$(sed -n 's/^WORKER_PROJECT=//p' "$ENVF" | tail -1)"
+  if [ -n "$scope" ] && VERCEL_AUTH_TOKEN="$token" timeout 60 vercel sandbox list --scope "$scope" --project "$project" </dev/null >/dev/null 2>&1; then
+    echo "✓ it can list sandboxes in $scope/$project"
+  else
+    echo "! it cannot list sandboxes in ${scope:-?}/${project:-?} yet; check the token's team access" >&2
+  fi
+fi

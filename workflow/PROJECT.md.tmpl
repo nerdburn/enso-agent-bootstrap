@@ -1,0 +1,78 @@
+---
+# Rendered by enso-agent-bootstrap (lib/workflow.sh) from the agent's conf. Re-running
+# install refreshes this file and keeps `enabled`; change it through the conf.
+name: ${WORKFLOW_NAME}
+workflow: 2
+enabled: ${ENABLED}
+repo: ${REPO_DIR}
+base: ${WORKFLOW_BASE}
+setup: ${SETUP}
+max_concurrency: ${WORKFLOW_MAX_CONCURRENCY}
+paths:
+  full: [pm, build, review, publish, qa, signoff, merge]
+  short: [pm, build, review, publish, merge]
+default_path: full
+stages:
+- name: pm
+  worktree: false
+  routes: [full, short]
+  default_route: full
+  output: >-
+    Brief: goal, acceptance criteria, out of scope, surfaces touched, decisions with who
+    made them and when, notes for Build, and the route.
+  instructions: >-
+    Turn the request into a brief Build can work from without guessing. Ask the client one
+    standalone question when a customer decision is missing; never invent one. A
+    well-specified ticket passes straight through.
+- name: build
+  inputs: [request, pm]
+  worktree: true
+  max_repairs: 8   # counted over the task's life, returns included
+  output: The candidate commits, what changed, tests added, docs touched.
+  instructions: Implement the brief in the task worktree. Commit everything; never push.
+  checks:
+${BUILD_CHECKS}
+- name: review
+  inputs: [request, pm, build]
+  worktree: true
+  return_to: build
+  max_returns: 2
+  output: Accept with a summary for the person who will try it, or specific findings.
+  instructions: A second agent reviews the exact candidate against the brief.
+- name: publish
+  inputs: [request, pm, build, review]
+  worktree: true
+  command: ./publish-pr.sh
+  output: The pull request for the reviewed candidate.
+- name: qa
+  inputs: [pm, build, review, publish]
+  worktree: true
+  return_to: build
+  max_returns: 1
+  output: >-
+    What was exercised on the preview and the result; Before and After screenshots of the
+    same view for visible changes.
+  instructions: Exercise the user journey the brief describes on the PR's preview deployment.
+- name: signoff
+  inputs: [pm, review, publish, qa]
+  human: true
+  return_to: build
+  output: The approver's explicit approval of this version.
+- name: merge
+  inputs: [build, review, publish, "qa?", "signoff?"]
+  worktree: true
+  command: ./merge-pr.sh
+  return_to: build
+  max_returns: 2
+  output: The merge commit on ${WORKFLOW_BASE}.
+hooks:
+  after_transition: ./lore-bridge.sh transition
+  after:build: ./refresh-branch.sh
+  after:blocked: ./notify.sh
+  after:signoff: ./notify.sh
+---
+
+${WORKFLOW_NAME} development workflow. Tasks come from Lore tickets assigned to
+${LORE_ASSIGNEE} (the `${JOB_PREFIX}-lore-dispatch` job). Questions, signoff requests and
+failures are posted by `notify.sh`; the PR is opened by `publish-pr.sh` and merged by
+`merge-pr.sh` once CI passes on the approved head.

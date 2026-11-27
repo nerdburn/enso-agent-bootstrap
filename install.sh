@@ -663,6 +663,17 @@ if [ -n "$LEGACY_HOME" ] && [ -n "$CHANNEL_WORKSPACE" ] && [ -d "$LEGACY_HOME/wo
   done
   CHANGED+=("workspaces/$CHANNEL_WORKSPACE/knowledge"); info "carried over workspaces/$CHANNEL_WORKSPACE/knowledge"
 fi
+# The development workflow (WORKFLOW_PROJECT in the conf): project, stage jobs, Lore
+# dispatch. Renders only; nothing is enabled by a run.
+if [ -n "${WORKER_JOBS:-}" ]; then
+  log "remote workers (Vercel Sandbox)"
+  "$HERE/lib/worker.sh" "${TMPCONF:-$CONF}" || warn "remote worker install failed"
+fi
+if [ -n "${WORKFLOW_PROJECT:-}" ]; then
+  log "development workflow ($WORKFLOW_PROJECT)"
+  ENSO_BIN="$ENSO_BIN" ENSO_HOME="$ENSO_HOME" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" \
+    "$HERE/lib/workflow.sh" "${TMPCONF:-$CONF}" || warn "development workflow install failed"
+fi
 git -C "$ENSO_HOME" add -A . >/dev/null 2>&1 || true
 if ! git -C "$ENSO_HOME" diff --cached --quiet 2>/dev/null; then
   git -C "$ENSO_HOME" commit -q -m "bootstrap: ${LEGACY_HOME:+migrate from $(basename "$LEGACY_HOME"); }house instructions, channel workspace, lore" || true
