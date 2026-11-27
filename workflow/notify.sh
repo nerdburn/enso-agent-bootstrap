@@ -31,6 +31,13 @@ send() {  # send TARGET (empty: the operator) < text
 # A run cancelled by a restart of enso: dispatch resumes the task on its own.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == *"(enso stopped)" ]] && exit 0
 
+# A question only the operator can answer (access, credentials): never to the client.
+if [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == Operator:* ]]; then
+  printf 'Needs you: *%s* (%s at %s)\n\n%s\n' "$title" "${ENSO_BLOCK_KIND:-blocked}" "${ENSO_FROM_STAGE:-?}" \
+    "$(printf '%s' "${message#Operator:}" | sed '1s/^ *//' | cut -c1-3000)" | send ""
+  exit 0
+fi
+
 case "$ENSO_TO_STAGE:${ENSO_BLOCK_KIND:-}:${ENSO_FROM_STAGE:-}" in
   blocked:stopped:*)
     exit 0 ;;

@@ -5,6 +5,9 @@ your specification; the request is background.
 2. If the brief leaves a decision open that you would otherwise guess, block with one
    standalone question: `enso task block REF --message -` (what it is about, the options,
    your recommendation, what it holds up). It is posted to ${APPROVER_LABEL} as written.
+   If what you need is something only the operator can give (access, a credential or API
+   key, an account, infrastructure), start the message with `Operator:`; it goes to the
+   operator instead, never to the client.
 3. Otherwise update docs and tests first, then the code. Commit everything and leave no
    untracked files. Never push, never open a pull request: later stages do that.
 4. Never weaken a test to make it pass. Edit existing tests or check configuration only
