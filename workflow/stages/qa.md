@@ -3,6 +3,12 @@ request; the preview links are the Vercel statuses on its head commit:
 `gh pr view <url> --json statusCheckRollup` (or the Vercel bot comment on the PR). Wait for
 the previews the change touches to finish building, up to 15 minutes.
 
+Previews behind Vercel Authentication redirect to vercel.com/sso-api. If
+`~/.config/enso-agent/vercel-bypass/<vercel project>` exists (the project is the preview
+host's first part, e.g. `marble-web`), send its contents as the `x-vercel-protection-bypass`
+header, with `x-vercel-set-bypass-cookie: true`; in Playwright, as `extraHTTPHeaders` on the
+browser context. Never print, log or paste the secret.
+
 1. From the PM brief's acceptance criteria and the review's **Try it** steps, exercise the
    user journey on the preview with Playwright (headless Chromium). Use test accounts
    from the repository docs or your notes; never a real member's account, and never
