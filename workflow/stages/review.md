@@ -17,3 +17,5 @@ product language, under 600 characters:
 changed.
 **Edited tests:** only if existing tests or check files changed: which, and whether each
 edit is sound.
+**To decide:** only if Build's handoff or your review left choices the client should
+confirm at signoff: one plain line each, saying how it works today.
