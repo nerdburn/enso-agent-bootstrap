@@ -75,7 +75,7 @@ VERCEL_ENV = {"VERCEL_AUTH_TOKEN": CFG["VERCEL_AUTH_TOKEN"]} if CFG.get("VERCEL_
 
 # The CLI's own error lines only ("Error: fetch failed", "├▶ status code: 503"), never a
 # remote command's output, so a failing check is not rerun.
-TRANSIENT = re.compile(r"^Error: (fetch failed|.*\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up))"
+TRANSIENT = re.compile(r"^Error: (fetch failed|Stream connection was interrupted|.*\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up))"
                        r"|status code: (429|50[234])\b", re.M)
 
 
