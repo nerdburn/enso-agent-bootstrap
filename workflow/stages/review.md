@@ -13,7 +13,9 @@ Good: `enso task advance REF --message -`, written for the client who will try i
 product language, under 600 characters:
 
 **Changed:** one plain sentence starting with a verb, under 140 characters ("Added a log of
-admin changes to member accounts."). It opens the signoff message.
+admin changes to member accounts."). It opens the signoff message. When the approver or QA
+sent the task back, say what they asked for and that it is done ("Legacy books now get the
+missing covers you asked for."), not the last small fix.
 **Try it:** up to three steps and what they should see, or one line saying nothing visible
 changed.
 **Edited tests:** only if existing tests or check files changed: which, and whether each
