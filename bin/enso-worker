@@ -380,7 +380,16 @@ def collect(name: str, turn: int, worktree: str) -> bool:
             vercel("copy", f"{name}:{d}/out.bundle", bundle)
             branch = git(worktree, "branch", "--show-current")
             git(worktree, "fetch", "-q", bundle, f"refs/heads/{branch}")
-            git(worktree, "merge", "-q", "--ff-only", "FETCH_HEAD")
+            start = output(sh(name, f"cat {d}/start 2>/dev/null || true")).strip()
+            if subprocess.run(["git", "-C", worktree, "merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"]).returncode == 0:
+                git(worktree, "merge", "-q", "--ff-only", "FETCH_HEAD")
+            elif start and git(worktree, "rev-parse", "HEAD") == start:
+                # The agent rewrote the branch (rebased onto the base to resolve conflicts)
+                # and nothing changed here since the turn began: take its branch as it is.
+                log(f"{name}: branch rewritten in the sandbox (rebased); taking it")
+                git(worktree, "reset", "-q", "--hard", "FETCH_HEAD")
+            else:
+                raise RuntimeError(f"{name}: the sandbox branch and {branch} here both moved; a person should look")
             log(f"{name}: worktree now at {git(worktree, 'rev-parse', '--short', 'HEAD')}")
     calls = output(sh(name, f"cat {d}/calls.jsonl 2>/dev/null || true"))
     for line in calls.splitlines():
