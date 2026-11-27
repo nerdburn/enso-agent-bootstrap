@@ -22,7 +22,7 @@ Settings: ~/.config/enso-agent/worker.env (KEY=value lines):
   CLAUDE_WORKER_TOKEN   long-lived Claude token (`claude setup-token`)   required
   WORKER_SCOPE          Vercel team, e.g. inputlogic                     required
   WORKER_PROJECT        Vercel project holding the sandboxes             required
-  WORKER_VCPUS=4  WORKER_TIMEOUT=2h  WORKER_MAX=5  WORKER_SETUP="npm ci --no-audit --no-fund"
+  WORKER_VCPUS=4  WORKER_TIMEOUT=4h  WORKER_MAX=5  WORKER_SETUP="npm ci --no-audit --no-fund"
   WORKER_AGENT          command run in the sandbox instead of claude (tests only)
 Standard library only.
 """
@@ -56,7 +56,7 @@ def log(msg: str) -> None:
 
 
 def settings() -> dict[str, str]:
-    values = {"WORKER_VCPUS": "4", "WORKER_TIMEOUT": "2h", "WORKER_MAX": "5",
+    values = {"WORKER_VCPUS": "4", "WORKER_TIMEOUT": "4h", "WORKER_MAX": "5",
               "WORKER_SETUP": "npm ci --no-audit --no-fund"}
     path = CONFIG / "worker.env"
     if path.exists():

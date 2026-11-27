@@ -33,7 +33,7 @@ umask 077
   echo "WORKER_SCOPE=$WORKER_SCOPE"
   echo "WORKER_PROJECT=$WORKER_PROJECT"
   echo "WORKER_VCPUS=${WORKER_VCPUS:-4}"
-  echo "WORKER_TIMEOUT=${WORKER_TIMEOUT:-2h}"
+  echo "WORKER_TIMEOUT=${WORKER_TIMEOUT:-4h}"
   echo "WORKER_MAX=${WORKER_MAX:-5}"
   echo "WORKER_SETUP=${WORKER_SETUP:-npm ci --no-audit --no-fund}"
   if [ -n "$token" ]; then echo "CLAUDE_WORKER_TOKEN=$token"; fi

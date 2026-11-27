@@ -165,7 +165,8 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # WORKER_PROJECT="enso-workers"  # Vercel project that holds the sandboxes
 # WORKER_VCPUS=4                 # 2 GB of memory per vCPU
 # WORKER_MAX=5                   # sandboxes running turns at once from this VM
-# WORKER_TIMEOUT="2h"            # sandbox session limit
+# WORKER_TIMEOUT="4h"            # sandbox session limit
+# WORKER_JOB_TIMEOUT=10800       # seconds a remote stage run may take (keep under WORKER_TIMEOUT)
 
 # ── Machine ──────────────────────────────────────────────────────────────
 TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone

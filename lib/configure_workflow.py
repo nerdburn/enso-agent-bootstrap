@@ -173,6 +173,10 @@ def main() -> None:
     }
     for stage, (timeout, kind) in STAGES.items():
         path = jobs_dir / f"{prefix}-{stage}" / "JOB.md"
+        if f"{workspace}:{prefix}-{stage}" in os.environ.get("WORKER_JOBS", "").split():
+            # A remote turn costs this VM nothing while it runs; big features take hours.
+            # Keep it under the sandbox session (WORKER_TIMEOUT, default 4h).
+            timeout = int(env("WORKER_JOB_TIMEOUT", "10800"))
         if kind == "command":
             prompt = Template((SOURCE / "stages" / "command.md").read_text()).substitute(COMMAND=f"./{stage}-pr.sh")
             agent_text = ""
