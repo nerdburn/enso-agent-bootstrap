@@ -9,8 +9,8 @@ your specification; the request is background.
    recommendation in it ("I'd make X do Y. OK?"); for real options, short bullets and
    your pick. No jargon.
    If what you need is something only the operator can give (access, a credential or API
-   key, an account, infrastructure), start the message with `Operator:`; it goes to the
-   operator instead, never to the client.
+   key, an account, infrastructure), start the message with `Operator:` and keep it to one
+   or two sentences naming exactly what you need; it goes to the operator, never the client.
 3. Otherwise update docs and tests first, then the code. Commit everything and leave no
    untracked files. Never push, never open a pull request: later stages do that.
 4. Never weaken a test to make it pass. Edit existing tests or check configuration only

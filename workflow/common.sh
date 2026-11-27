@@ -32,3 +32,21 @@ sync_base() {
     git -C "$WORKFLOW_REPO_DIR" fetch -q origin "+$WORKFLOW_BASE:$WORKFLOW_BASE" >&2
   fi || { echo "could not update $WORKFLOW_BASE in $WORKFLOW_REPO_DIR from origin" >&2; return 1; }
 }
+
+# ticket TITLE: the Lore key a task title starts with ("MC-539: Book…" → MC-539).
+ticket() { local k="${1%%:*}"; if [ "$k" != "$1" ] && [ "${#k}" -le 16 ]; then echo "$k"; else echo "${1:0:60}"; fi; }
+# gist TEXT [N]: one line for a DM: git hints and worker chatter dropped, at most N characters.
+gist() {
+  python3 - "${2:-240}" "$1" <<'PY'
+import re, sys
+n, text = int(sys.argv[1]), sys.argv[2]
+lines = [re.sub(r"\s*(\S+: )?hint:.*", "", l) for l in text.splitlines()
+         if not re.match(r"\s*(hint:|enso-worker: \S+: turn \d+ started)", l)]
+lines = [l for l in lines if l.strip()]
+s = " ".join(" ".join(lines).split())
+s = re.sub(r"^run [0-9a-f]{12} ended \(error\): ", "", s)
+print(s if len(s) <= n else s[: n - 1].rsplit(" ", 1)[0] + "…")
+PY
+}
+# operator TEXT: one short DM to the operator (the transport's notify target).
+operator() { printf '%s\n' "$1" | "$ENSO_BIN" message send - --workspace "$ENSO_WORKSPACE" >/dev/null || echo "operator message not sent" >&2; }

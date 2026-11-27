@@ -112,8 +112,6 @@ if [ "$verdict" = approve ]; then
   fi
   echo "$key" > "$mark"; echo "$ref: test edits approved ($reason)" >&2
 else
-  printf 'Needs you: *%s*: edited tests or check files need your approval.\n\nReviewer: %s\n\nFiles: %s\n\nIf they are fine: `enso workflow approve-rules %s --message "..."`\n' \
-    "$title" "$reason" "$files" "$ref" | "$ENSO_BIN" message send - --workspace "$ENSO_WORKSPACE" >/dev/null \
-    || { echo "rules-review: escalation not sent for $ref" >&2; exit 0; }
+  operator "*$(ticket "$title")* needs you: edited tests to approve. $(gist "$reason" 300) If fine: \`enso workflow approve-rules $ref --message ok\`" || exit 0
   echo "$key" > "$mark"; echo "$ref: test edits escalated ($reason)" >&2
 fi

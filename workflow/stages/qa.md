@@ -21,8 +21,8 @@ browser context. Never print, log or paste the secret.
 A criterion fails or the preview is broken: `enso task return REF --message -` with what you
 did, what you expected, and what happened. You cannot reach the preview (protection, build
 failure): block with the reason, starting the message with `Operator:` when only the
-operator can fix it (access, credentials, infrastructure); it then goes to the operator,
-not the client.
+operator can fix it (access, credentials, infrastructure), in one or two sentences; it then
+goes to the operator, not the client.
 
 Passed: `enso task advance REF --message -`, starting with the part the approver reads:
 

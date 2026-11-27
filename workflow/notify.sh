@@ -36,10 +36,15 @@ send() {  # send TARGET (empty: the operator) < text
 # A handoff refused because the operator changed the workflow mid-run: dispatch resumes it.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == "workflow changed during execution"* ]] && exit 0
 
+# A remote worker's infrastructure error: dispatch resumes it, and tells the operator only
+# if it keeps failing.
+[ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == *"ended (error): enso-worker:"* ]] && exit 0
+
+# Operator notices are one short line: the ticket key and what is needed.
+key="$(ticket "$title")"
 # A question only the operator can answer (access, credentials): never to the client.
 if [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == Operator:* ]]; then
-  printf 'Needs you: *%s* (%s at %s)\n\n%s\n' "$title" "${ENSO_BLOCK_KIND:-blocked}" "${ENSO_FROM_STAGE:-?}" \
-    "$(printf '%s' "${message#Operator:}" | sed '1s/^ *//' | cut -c1-3000)" | send ""
+  operator "*$key* needs you: $(gist "${message#Operator:}" 300)"
   exit 0
 fi
 
@@ -48,9 +53,10 @@ case "$ENSO_TO_STAGE:${ENSO_BLOCK_KIND:-}:${ENSO_FROM_STAGE:-}" in
     exit 0 ;;
   blocked:decision:pm | blocked:decision:build | blocked:decision:qa)
     printf '%sQuick question on *%s*:\n%s\n' "$mentions" "$title" "$message" | send "$WORKFLOW_CHANNEL" ;;
+  blocked:failure:*)
+    operator "*$key* stopped at ${ENSO_FROM_STAGE:-?}: $(gist "$message")" ;;
   blocked:*)
-    printf '%s: *%s* (%s at %s): %s\n' "$([ "${ENSO_BLOCK_KIND:-}" = failure ] && echo Stopped || echo 'Needs you')" \
-      "$title" "${ENSO_BLOCK_KIND:-blocked}" "${ENSO_FROM_STAGE:-?}" "${message:0:1500}" | send "" ;;
+    operator "*$key* needs you at ${ENSO_FROM_STAGE:-?}: $(gist "$message")" ;;
   signoff:*)
     # Short: what was done, anything to confirm, the link, "can I ship it?". Review's other
     # sections and QA's report stay on the task; the screenshots go into the thread.

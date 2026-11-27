@@ -11,7 +11,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
-. "$here/workflow.env"
+. "$here/common.sh"   # workflow.env plus sync_base, ticket, gist, operator
 cmd="${1:?usage: lore-bridge.sh dispatch|transition}"
 
 if [ "$cmd" = dispatch ]; then
@@ -36,16 +36,30 @@ if h.get("actor") != "enso" or h.get("to_stage") != "blocked":
 since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)
 recent = sum(1 for e in d.get("events") or [] if "Resumed automatically" in str(e.get("message"))
              and dt.datetime.fromisoformat(e["created_at"]) > since)
-if recent >= 3:
-    sys.exit(0)
+why = ""
 if msg.endswith("(enso stopped)"):
-    print("a restart of enso interrupted its run")
+    why = "a restart of enso interrupted its run"
 elif "ended (error): enso-worker:" in msg:
-    print("its remote worker hit an infrastructure error")
+    why = "its remote worker hit an infrastructure error"
 elif msg.startswith("workflow changed during execution"):
-    print("the workflow was updated while its run was working")
+    why = "the workflow was updated while its run was working"
 elif msg.startswith("Changed tests or check files need approval"):
-    print("approval")')"
+    why = "approval"
+if why == "approval" or not why:
+    print(why)
+elif recent >= 3:
+    print("stuck|" + why)  # the operator hears once; see below
+else:
+    print(why)')"
+    if [[ "$why" == stuck\|* ]]; then
+      # Three automatic resumes in six hours did not get it through: tell the operator once.
+      mark="$here/state/$ref.stuck"; stamp="$(printf '%s' "$why" | cksum | cut -d' ' -f1)-$(date +%Y%m%d)"
+      if [ "$(cat "$mark" 2>/dev/null)" != "$stamp" ]; then
+        title="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("title", ""))')"
+        operator "*$(ticket "$title")* is stuck: ${why#stuck|}, 3 times in 6 hours. Look at it, then \`enso task resume $ref\`." && echo "$stamp" > "$mark"
+      fi
+      why=""
+    fi
     if [ "$why" = approval ]; then
       # Build rebased onto the base itself (resolving conflicts the after:build hook could
       # not), so the base's own test edits look like the task's. `task rebase` moves the
