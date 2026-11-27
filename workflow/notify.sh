@@ -43,12 +43,38 @@ case "$ENSO_TO_STAGE:${ENSO_BLOCK_KIND:-}:${ENSO_FROM_STAGE:-}" in
   signoff:*)
     pr="$(state "$ref" pr)"; head="$(state "$ref" head)"
     summary="$(stage_output "$ref" review)"
-    qa="$(stage_output "$ref" qa)"
-    {
+    # Only QA's plain-language part goes to the approver; the details stay on the task.
+    qa="$(stage_output "$ref" qa | python3 -c 'import re, sys
+text = sys.stdin.read()
+m = re.search(r"\*\*For the approver:?\*\*:?\s*(.*?)(?=\n\s*\*\*[A-Z][^*\n]*:?\*\*|\Z)", text, re.S)
+out = m.group(1).strip() if m else text.strip().split("\n\n")[0]
+print(out[:700])')"
+    receipt="$({
       printf '%sReady for your approval: *%s*\n\n' "$mentions" "$title"
       [ -n "$summary" ] && printf '%s\n\n' "$summary"
-      [ -n "$qa" ] && printf '*Checked on the preview:*\n%s\n\n' "$qa"
+      [ -n "$qa" ] && printf '*Checked on the preview:* %s\n\n' "$qa"
       [ -n "$pr" ] && printf 'Pull request and preview links: %s (version %s)\n\n' "$pr" "${head:0:8}"
       printf 'Should I merge this version? Reply *approve* in this thread, or tell me what to change.\n'
-    } | send "$WORKFLOW_CHANNEL" ;;
+    } | "$ENSO_BIN" message send - --to "slack:$WORKFLOW_CHANNEL" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null)" \
+      || { echo "notify.sh: signoff not sent: $ref" >&2; exit 0; }
+    # QA's Before/After screenshots (task refs of kind path) go into the notice's thread.
+    thread="$(python3 -c 'import json, sys; print(json.loads(sys.argv[1]).get("message_id") or "")' "$receipt" 2>/dev/null || true)"
+    shots="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, os, re, sys
+seen = []
+for r in json.load(sys.stdin).get("refs") or []:
+    v = str(r.get("value", ""))
+    if r.get("kind") == "path" and re.match(r"(before|after)[^/]*\.(png|jpe?g)$", os.path.basename(v), re.I) \
+            and os.path.isfile(v) and v not in seen:
+        seen.append(v)
+def pair(p):  # before.png, after.png, before-x.png, after-x.png
+    base = os.path.basename(p).lower()
+    rest = re.sub(r"^(before|after)", "", base)
+    return (rest.startswith("-") or rest.startswith("_"), rest, not base.startswith("before"))
+print("\n".join(sorted(seen, key=pair)[:6]))')"
+    if [ -n "$thread" ] && [ -n "$shots" ]; then
+      mapfile -t files <<<"$shots"
+      SLACK_UPLOAD_COMMENT="Before and after, from the preview:" \
+        python3 "$here/slack-upload.py" "$WORKFLOW_CHANNEL" "$thread" "${files[@]}" >&2 \
+        || echo "notify.sh: screenshots not uploaded: $ref" >&2
+    fi ;;
 esac

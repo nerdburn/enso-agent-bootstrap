@@ -22,5 +22,11 @@ A criterion fails or the preview is broken: `enso task return REF --message -` w
 did, what you expected, and what happened. You cannot reach the preview (protection, build
 failure): block with the reason.
 
-Passed: `enso task advance REF --message -` with the journeys you exercised, one line each,
+Passed: `enso task advance REF --message -`, starting with the part the approver reads:
+
+**For the approver:** at most three short lines in plain product language: what you looked
+at on the preview and what you saw. No tooling, timings, test accounts, file paths or
+environment notes. The Before and After screenshots are posted beside it.
+
+Then **Details:** the journeys you exercised, one line each, any environment workarounds,
 and the screenshot paths.

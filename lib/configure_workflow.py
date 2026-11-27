@@ -22,7 +22,7 @@ from string import Template
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "workflow"
-SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh")
+SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh", "slack-upload.py")
 # stage -> (timeout seconds, kind)
 STAGES = {
     "pm": (1800, "agent"),
