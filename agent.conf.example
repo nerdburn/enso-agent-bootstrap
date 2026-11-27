@@ -132,6 +132,31 @@ AGENT_MAIL_KEY=""
 LORE_CONTEXT=""
 LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 
+# ── Development workflow (optional) ──────────────────────────────────────
+# Lore tickets assigned to the agent run through an enso project:
+#   pm → build → review → publish (opens the PR) → qa → signoff → merge
+# (the short route, chosen by pm for internal fixes, skips qa and signoff).
+# Questions and signoff requests go to WORKFLOW_CHANNEL mentioning the approvers;
+# merge waits for the repo's CI on the approved head. lib/workflow.sh renders it
+# into CHANNEL_WORKSPACE; a fresh install leaves everything disabled and a re-run
+# keeps what is enabled. See ATHENA-WORKFLOW-PLAN.md.
+# WORKFLOW_PROJECT=""            # enso project key, 2-10 uppercase (tasks KEY-001)
+# WORKFLOW_NAME=""               # display name
+# WORKFLOW_REPO=""               # owner/repo; cloned to ~/apps/<repo>
+# WORKFLOW_BASE=""               # branch PRs target (default: the repo's default branch)
+# WORKFLOW_SETUP="npm ci"        # run in each new task worktree
+# WORKFLOW_CHECKS="lint: npm run lint
+# tests: npm test"               # build's required checks, one "name: command" per line
+# WORKFLOW_CHANNEL=""            # C… channel for questions and signoff
+# WORKFLOW_APPROVERS=""          # Slack member IDs who can sign off
+# WORKFLOW_APPROVER_LABEL=""     # how prompts name them, e.g. "Kristin (<@U…>)"
+# LORE_ASSIGNEE=""               # Lore assignee whose tickets are admitted (default AGENT_NAME)
+# WORKFLOW_WIP_LIMIT=3           # active tasks before dispatch stops admitting
+# WORKFLOW_MAX_CONCURRENCY=2     # enso stage runs at once for the project
+# WORKFLOW_AGENT="claude/opus/high"        # stage agent; WORKFLOW_REVIEW_AGENT for review
+# WORKFLOW_CI_WAIT=2700          # seconds merge waits for CI before blocking
+# LORE_BRIDGE_REF="b91d02f"      # nerdburn/lore commit of integrations/enso/lore_bridge.py
+
 # ── Machine ──────────────────────────────────────────────────────────────
 TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone
 OPERATOR_NAME="Shawn Adrian"     # seeds the operator knowledge note
