@@ -73,12 +73,27 @@ CFG = settings()
 VERCEL_ENV = {"VERCEL_AUTH_TOKEN": CFG["VERCEL_AUTH_TOKEN"]} if CFG.get("VERCEL_AUTH_TOKEN") else {}
 
 
+# The CLI's own error lines only ("Error: fetch failed", "├▶ status code: 503"), never a
+# remote command's output, so a failing check is not rerun.
+TRANSIENT = re.compile(r"^Error: (fetch failed|.*\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up))"
+                       r"|status code: (429|50[234])\b", re.M)
+
+
 def vercel(*args: str, check: bool = True, capture: bool = True, env: dict | None = None,
            timeout: float | None = None) -> subprocess.CompletedProcess:
     sub, rest = args[0], list(args[1:])
     cmd = ["vercel", "sandbox", sub, "--scope", CFG["WORKER_SCOPE"], "--project", CFG["WORKER_PROJECT"], *rest]
-    proc = subprocess.run(cmd, capture_output=capture, text=True, stdin=subprocess.DEVNULL,
-                          env={**os.environ, **VERCEL_ENV, **(env or {})}, timeout=timeout)
+    # Transient API/network errors are retried. Every call is safe to repeat except
+    # create (a duplicate name fails anyway) and start_turn's launch, which is guarded.
+    for attempt in range(1 if sub == "create" else 4):
+        if attempt:
+            log(f"vercel sandbox {sub}: transient error, retry {attempt} in {5 * 3 ** (attempt - 1)}s")
+            time.sleep(5 * 3 ** (attempt - 1))
+        proc = subprocess.run(cmd, capture_output=capture, text=True, stdin=subprocess.DEVNULL,
+                              env={**os.environ, **VERCEL_ENV, **(env or {})}, timeout=timeout)
+        err = (proc.stderr or "") if capture else ""
+        if proc.returncode == 0 or not TRANSIENT.search(err[-2000:]):
+            break
     if check and proc.returncode != 0:
         raise RuntimeError(f"vercel sandbox {sub} failed ({proc.returncode}): {(proc.stderr or proc.stdout or '')[-600:]}")
     return proc
@@ -278,8 +293,11 @@ def start_turn(name: str, turn: int, claude_args: list[str], snapshots: dict[str
         vercel("copy", str(archive), f"{name}:{RUN}/turn.tgz")
     d = f"{RUN}/turn-{turn}"
     agent = f"WORKER_AGENT={shlex.quote(CFG['WORKER_AGENT'])} " if CFG.get("WORKER_AGENT") else ""
-    sh(name, f"mkdir -p {d} && cd {RUN} && tar -xzf turn.tgz && rm turn.tgz && mv args.json {d}/ "
-             f"&& {agent}setsid nohup bash {RUN}/turn.sh {d} >/dev/null 2>&1 < /dev/null & echo started")
+    # mkdir is the launch lock: a retried exec (the CLI can report failure after the turn
+    # started) finds it and launches nothing.
+    sh(name, f"mkdir -p {d} && if mkdir {d}/.launched 2>/dev/null; then cd {RUN} && tar -xzf turn.tgz "
+             f"&& rm turn.tgz && mv args.json {d}/ "
+             f"&& {{ {agent}setsid nohup bash {RUN}/turn.sh {d} >/dev/null 2>&1 < /dev/null & }}; fi; echo started")
     log(f"{name}: turn {turn} started")
 
 

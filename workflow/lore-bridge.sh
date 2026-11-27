@@ -23,19 +23,32 @@ if [ "$cmd" = dispatch ]; then
       git -C "$WORKFLOW_REPO_DIR" fetch -q origin "+$WORKFLOW_BASE:$WORKFLOW_BASE" >&2 || true
     fi
   fi
-  # A restart of enso cancels in-flight stage runs and blocks their tasks ("run … ended
-  # (cancelled): cancelled (enso stopped)"). Nobody decided anything, so put them back.
+  # Blocks nobody decided, put back automatically:
+  #  - a restart of enso cancels in-flight stage runs ("… cancelled (enso stopped)");
+  #  - a remote worker's run died on an infrastructure error ("ended (error): enso-worker:
+  #    …") while its sandbox may still be working; the next run adopts the sandbox.
+  # At most 3 automatic resumes per task in 6 hours, so a persistent fault reaches a person.
   # A resume refused because the block's hooks are still pending is retried next run.
   for ref in $("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
       | python3 -c 'import json, sys
 print(" ".join(t["ref"] for t in json.load(sys.stdin) if t.get("stage") == "blocked"))'); do
-    if "$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys
-h = json.load(sys.stdin).get("handoff") or {}
-sys.exit(0 if h.get("actor") == "enso" and h.get("to_stage") == "blocked"
-         and str(h.get("message", "")).endswith("(enso stopped)") else 1)'; then
+    why="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys, datetime as dt
+d = json.load(sys.stdin); h = d.get("handoff") or {}; msg = str(h.get("message", ""))
+if h.get("actor") != "enso" or h.get("to_stage") != "blocked":
+    sys.exit(0)
+since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)
+recent = sum(1 for e in d.get("events") or [] if "Resumed automatically" in str(e.get("message"))
+             and dt.datetime.fromisoformat(e["created_at"]) > since)
+if recent >= 3:
+    sys.exit(0)
+if msg.endswith("(enso stopped)"):
+    print("a restart of enso interrupted its run")
+elif "ended (error): enso-worker:" in msg:
+    print("its remote worker hit an infrastructure error")')"
+    if [ -n "$why" ]; then
       "$ENSO_BIN" task resume "$ref" --workspace "$ENSO_WORKSPACE" \
-        --message "Resumed automatically: a restart of enso interrupted its run." >&2 \
-        && echo "$ref: resumed after an enso restart" >&2 || true
+        --message "Resumed automatically: $why." >&2 \
+        && echo "$ref: resumed ($why)" >&2 || true
     fi
   done
   active="$("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
