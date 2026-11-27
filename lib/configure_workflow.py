@@ -89,7 +89,7 @@ def main() -> None:
     approver_label = env("WORKFLOW_APPROVER_LABEL", " and ".join(f"<@{u}>" for u in approvers))
     # People who may also sign off without being mentioned on every notice (an operator
     # approving on the approver's behalf): "Shawn (<@U…>), on Kristin's behalf".
-    delegates = env("WORKFLOW_DELEGATES", "")
+    delegates = os.environ.get("WORKFLOW_DELEGATES", "").strip()
     signoff_label = f"{approver_label}, or {delegates}" if delegates else approver_label
     agent = env("WORKFLOW_AGENT_SPEC")
     review_agent = env("WORKFLOW_REVIEW_AGENT", agent)
