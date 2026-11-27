@@ -45,7 +45,9 @@ elif msg.startswith("workflow changed during execution"):
     why = "the workflow was updated while its run was working"
 elif msg.startswith("Changed tests or check files need approval"):
     why = "approval"
-if why == "approval" or not why:
+elif msg.startswith("Verification budget exhausted"):
+    why = "budget"
+if why in ("approval", "budget") or not why:
     print(why)
 elif recent >= 3:
     print("stuck|" + why)  # the operator hears once; see below
@@ -59,6 +61,23 @@ else:
         operator "*$(ticket "$title")* is stuck: ${why#stuck|}, 3 times in 6 hours. Look at it, then \`enso task resume $ref\`." && echo "$stamp" > "$mark"
       fi
       why=""
+    fi
+    if [ "$why" = budget ]; then
+      # Out of verification attempts. Attempts spent on worker errors and approval gates
+      # are not a failing change: reset and hand off again (counted as an automatic resume).
+      # Checks that failed are: the operator hears once.
+      why=""
+      shown="$("$ENSO_BIN" workflow show "$ref" --workspace "$ENSO_WORKSPACE" 2>/dev/null || true)"
+      if grep -qE ': failed \(attempt' <<<"$shown"; then
+        mark="$here/state/$ref.budget"; stamp="$(date +%Y%m%d)-$(grep -c . <<<"$shown")"
+        if [ "$(cat "$mark" 2>/dev/null)" != "$stamp" ]; then
+          title="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("title", ""))')"
+          operator "*$(ticket "$title")* is stuck: its checks keep failing and it is out of attempts. \`enso workflow show $ref\`" && echo "$stamp" > "$mark"
+        fi
+      elif env -u ENSO_RUN_ID "$ENSO_BIN" workflow retry "$ref" --workspace "$ENSO_WORKSPACE" \
+          --message "Attempts went to worker errors or approval gates, not failed checks." >/dev/null 2>&1; then
+        why="its attempts went to worker errors or approval gates, not failed checks"
+      fi
     fi
     if [ "$why" = approval ]; then
       # Build rebased onto the base itself (resolving conflicts the after:build hook could

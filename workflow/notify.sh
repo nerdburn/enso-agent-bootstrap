@@ -40,6 +40,9 @@ send() {  # send TARGET (empty: the operator) < text
 # if it keeps failing.
 [ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == *"ended (error): enso-worker:"* ]] && exit 0
 
+# Out of verification attempts: dispatch resets it when no check failed, else tells the operator.
+[ "$ENSO_TO_STAGE" = blocked ] && [[ "$message" == "Verification budget exhausted"* ]] && exit 0
+
 # Operator notices are one short line: the ticket key and what is needed.
 key="$(ticket "$title")"
 # A question only the operator can answer (access, credentials): never to the client.
