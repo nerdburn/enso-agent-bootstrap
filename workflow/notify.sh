@@ -42,27 +42,29 @@ case "$ENSO_TO_STAGE:${ENSO_BLOCK_KIND:-}:${ENSO_FROM_STAGE:-}" in
   blocked:stopped:*)
     exit 0 ;;
   blocked:decision:pm | blocked:decision:build | blocked:decision:qa)
-    printf '%sQuestion on *%s*\n\n%s\n\n_Reply in this thread and I will carry on._\n' \
-      "$mentions" "$title" "$message" | send "$WORKFLOW_CHANNEL" ;;
+    printf '%sQuick question on *%s*:\n%s\n' "$mentions" "$title" "$message" | send "$WORKFLOW_CHANNEL" ;;
   blocked:*)
     printf '%s: *%s* (%s at %s): %s\n' "$([ "${ENSO_BLOCK_KIND:-}" = failure ] && echo Stopped || echo 'Needs you')" \
       "$title" "${ENSO_BLOCK_KIND:-blocked}" "${ENSO_FROM_STAGE:-?}" "${message:0:1500}" | send "" ;;
   signoff:*)
-    pr="$(state "$ref" pr)"; head="$(state "$ref" head)"
-    summary="$(stage_output "$ref" review)"
-    # Only QA's plain-language part goes to the approver; the details stay on the task.
-    qa="$(stage_output "$ref" qa | python3 -c 'import re, sys
-text = sys.stdin.read()
-m = re.search(r"\*\*For the approver:?\*\*:?\s*(.*?)(?=\n\s*\*\*[A-Z][^*\n]*:?\*\*|\Z)", text, re.S)
-out = m.group(1).strip() if m else text.strip().split("\n\n")[0]
-print(out[:700])')"
-    receipt="$({
-      printf '%sReady for your approval: *%s*\n\n' "$mentions" "$title"
-      [ -n "$summary" ] && printf '%s\n\n' "$summary"
-      [ -n "$qa" ] && printf '*Checked on the preview:* %s\n\n' "$qa"
-      [ -n "$pr" ] && printf 'Pull request and preview links: %s (version %s)\n\n' "$pr" "${head:0:8}"
-      printf 'Should I merge this version? Reply *approve* in this thread, or tell me what to change.\n'
-    } | "$ENSO_BIN" message send - --to "slack:$WORKFLOW_CHANNEL" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null)" \
+    # Short: what was done, anything to confirm, the link, "can I ship it?". Review's other
+    # sections and QA's report stay on the task; the screenshots go into the thread.
+    pr="$(state "$ref" pr)"
+    receipt="$(stage_output "$ref" review | python3 -c 'import re, sys
+text, mentions, title, pr = sys.stdin.read(), *sys.argv[1:]
+def field(name):
+    m = re.search(r"\*\*" + name + r":?\*\*:?[ \t]*(.*?)(?=\n\s*\*\*[A-Z][^*\n]*:?\*\*|\Z)", text, re.S)
+    return m.group(1).strip() if m else ""
+changed = " ".join(field("Changed").split()) or " ".join(text.strip().split("\n\n")[0].split())[:200]
+asks = [re.sub(r"^[-*•\d.)\s]+", "", l).strip() for l in field("To decide").splitlines()]
+asks = [a for a in asks if a]
+out = f"{mentions}I finished *{title}*" + (f": {changed[:1].lower() + changed[1:]}" if changed else ".")
+if asks:
+    out += "\n\nBefore I ship it, can you confirm:\n" + "\n".join("• " + a for a in asks)
+peek = f"Take a peek ({pr}) and let me know: can" if pr else "Can"
+out += f"\n\n{peek} I ship it? Reply *approve*, or tell me what to change."
+print(out)' "$mentions" "$title" "$pr" \
+      | "$ENSO_BIN" message send - --to "slack:$WORKFLOW_CHANNEL" --workspace "$ENSO_WORKSPACE" --json 2>/dev/null)" \
       || { echo "notify.sh: signoff not sent: $ref" >&2; exit 0; }
     # QA's Before/After screenshots (task refs of kind path) go into the notice's thread.
     thread="$(python3 -c 'import json, sys; r = json.loads(sys.argv[1]); print(r.get("ts") or r.get("message_id") or "")' "$receipt" 2>/dev/null || true)"
@@ -83,7 +85,7 @@ def order(p):  # complete before/after pairs first (the plain one first), then l
 print("\n".join(sorted(seen, key=order)[:8]))')"
     if [ -n "$thread" ] && [ -n "$shots" ]; then
       files=(); while IFS= read -r f; do files+=("$f"); done <<<"$shots"
-      SLACK_UPLOAD_COMMENT="Before and after, from the preview:" \
+      SLACK_UPLOAD_COMMENT="Before and after:" \
         python3 "$here/slack-upload.py" "$WORKFLOW_CHANNEL" "$thread" "${files[@]}" >&2 \
         || echo "notify.sh: screenshots not uploaded: $ref" >&2
     fi ;;

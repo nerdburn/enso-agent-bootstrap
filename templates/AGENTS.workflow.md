@@ -9,7 +9,7 @@ the task REF with `enso task list --project ${WORKFLOW_PROJECT}` (its title star
 same key), check its state with `enso task show REF` first, and reply in the thread in one
 line saying what you did, naming the ticket by its Lore key.
 
-- **Answer to a question.** A reply in the thread under "Question on …" answers it. If the
+- **Answer to a question.** A reply in the thread under a question you posted answers it. If the
   task is still blocked: `enso task resume REF --message "<the answer, who gave it, date>"`.
   If the reply is unclear, or could be about a different question, ask in the thread.
 - **Signoff.** Only ${APPROVER_LABEL} can approve. When one of them clearly approves the

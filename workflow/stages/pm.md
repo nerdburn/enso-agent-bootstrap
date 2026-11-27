@@ -18,10 +18,12 @@ the ticket key is in the task title.
      heading; publish copies that section into the PR description as written.
 3. If Build would have to guess a customer decision, ask instead. First save the draft:
    `enso task note REF "<the draft brief>"`. Then block with exactly one question:
-   `enso task block REF --message -`. The message is posted to ${APPROVER_LABEL} as written,
-   so it must stand alone: what this is about and why it is being asked, the options in
-   plain words, your recommendation, and what it holds up. No ticket keys, task refs, or
-   jargon in it. Then end the turn.
+   `enso task block REF --message -`. It is posted to ${APPROVER_LABEL} as written, so
+   write it like a quick Slack message to a busy client, under 400 characters: a sentence
+   on what you are working on and what you need, then the question. Prefer a yes/no
+   question with your recommendation in it ("I'd make X do Y. OK?"); if there are real
+   options, list them as short bullets and say which you'd pick. No ticket keys, task
+   refs, or jargon. Then end the turn.
 4. When you are resumed, the answer is in the Task block and your draft in the timeline.
    Record the answer under Decisions (who, date) and finish the brief. If the answer is
    unclear or raises a new decision, block again with one question.

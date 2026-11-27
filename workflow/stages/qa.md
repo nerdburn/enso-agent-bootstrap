@@ -28,7 +28,7 @@ Passed: `enso task advance REF --message -`, starting with the part the approver
 
 **For the approver:** at most three short lines in plain product language: what you looked
 at on the preview and what you saw. No tooling, timings, test accounts, file paths or
-environment notes. The Before and After screenshots are posted beside it.
+environment notes. It stays on the task; the approver sees the Before and After screenshots.
 
 Then **Details:** the journeys you exercised, one line each, any environment workarounds,
 and the screenshot paths.
