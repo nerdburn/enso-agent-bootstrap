@@ -66,7 +66,7 @@ export WORKER_PARALLEL="${WORKER_PARALLEL:-1}" WORKER_JOB_TIMEOUT="${WORKER_JOB_
 python3 "$HERE/lib/configure_workflow.py"
 
 # lore's bridge, pinned: the claim/unique-ref protocol has to match the installed lore.
-LORE_BRIDGE_REF="${LORE_BRIDGE_REF:-b91d02f}"
+LORE_BRIDGE_REF="${LORE_BRIDGE_REF:-2cdb7a8}"
 project_dir="$ENSO_HOME/workspaces/$CHANNEL_WORKSPACE/projects/$WORKFLOW_PROJECT"
 bridge="$project_dir/lore_bridge.py"
 if [ ! -f "$bridge" ] || ! grep -q "lore-bridge-ref: $LORE_BRIDGE_REF" "$bridge"; then

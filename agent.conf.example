@@ -156,7 +156,7 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # WORKFLOW_MAX_CONCURRENCY=2     # enso stage runs at once for the project
 # WORKFLOW_AGENT="claude/opus/high"        # stage agent; WORKFLOW_REVIEW_AGENT for review
 # WORKFLOW_CI_WAIT=2700          # seconds merge waits for CI before blocking
-# LORE_BRIDGE_REF="b91d02f"      # nerdburn/lore commit of integrations/enso/lore_bridge.py
+# LORE_BRIDGE_REF="2cdb7a8"      # nerdburn/lore commit of integrations/enso/lore_bridge.py
 #
 # Remote workers (optional): run these stage jobs in Vercel Sandboxes (bin/enso-worker)
 # so builds and tests never load this VM. Build's checks then run in the sandbox too.
