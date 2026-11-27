@@ -33,8 +33,14 @@ git push --force-with-lease -u origin "HEAD:refs/heads/$branch" >&2 \
 
 pr="$(gh pr list -R "$WORKFLOW_REPO" --head "$branch" --state open --json url --jq '.[0].url // empty')"
 if [ -z "$pr" ]; then
-  body="$(printf '%s\n\n---\n%sOpened by %s from task %s. Merged only after review, QA on the preview and approval of this exact version.\n' \
-    "$(stage_output "$ENSO_TASK" review)" "${key:+Lore: $key. }" "$WORKFLOW_AGENT" "$ENSO_TASK")"
+  # The brief's "## For the PR" section (follow-ups for other people), if PM wrote one.
+  notes="$(stage_output "$ENSO_TASK" pm | python3 -c 'import re, sys
+m = re.search(r"^##+ *For the PR *\n(.*?)(?=^##+ |\Z)", sys.stdin.read(), re.M | re.S | re.I)
+print(m.group(1).strip() if m else "")')"
+  body="$(printf '%s\n\n%s---\n%sOpened by %s from task %s. Merged only after review, QA on the preview and approval of this exact version.\n' \
+    "$(stage_output "$ENSO_TASK" review)" "${notes:+$notes
+
+}" "${key:+Lore: $key. }" "$WORKFLOW_AGENT" "$ENSO_TASK")"
   pr="$(gh pr create -R "$WORKFLOW_REPO" --base "$WORKFLOW_BASE" --head "$branch" --title "$title" --body "$body")"
 fi
 "$ENSO_BIN" task ref "$ENSO_TASK" url "$pr" --workspace "$ENSO_WORKSPACE" >/dev/null 2>&1 || true
