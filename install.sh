@@ -665,6 +665,10 @@ if [ -n "$LEGACY_HOME" ] && [ -n "$CHANNEL_WORKSPACE" ] && [ -d "$LEGACY_HOME/wo
 fi
 # The development workflow (WORKFLOW_PROJECT in the conf): project, stage jobs, Lore
 # dispatch. Renders only; nothing is enabled by a run.
+if [ -n "${WORKER_JOBS:-}" ]; then
+  log "remote workers (Vercel Sandbox)"
+  "$HERE/lib/worker.sh" "${TMPCONF:-$CONF}" || warn "remote worker install failed"
+fi
 if [ -n "${WORKFLOW_PROJECT:-}" ]; then
   log "development workflow ($WORKFLOW_PROJECT)"
   ENSO_BIN="$ENSO_BIN" ENSO_HOME="$ENSO_HOME" CHANNEL_WORKSPACE="$CHANNEL_WORKSPACE" \

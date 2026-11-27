@@ -38,7 +38,13 @@ if [ ! -d "$WORKFLOW_REPO_DIR/.git" ]; then
   git clone -q "https://github.com/$WORKFLOW_REPO.git" "$WORKFLOW_REPO_DIR"
 fi
 export WORKFLOW_BASE="${WORKFLOW_BASE:-$(git -C "$WORKFLOW_REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || echo main)}"
-git -C "$WORKFLOW_REPO_DIR" fetch -q origin "$WORKFLOW_BASE" || warn "could not fetch $WORKFLOW_BASE in $WORKFLOW_REPO_DIR"
+# enso cuts task worktrees from the LOCAL base branch, so it must exist and track origin
+# (lore-bridge.sh dispatch keeps it current). Nothing commits to it locally.
+if [ "$(git -C "$WORKFLOW_REPO_DIR" branch --show-current)" = "$WORKFLOW_BASE" ]; then
+  git -C "$WORKFLOW_REPO_DIR" pull -q --ff-only origin "$WORKFLOW_BASE" || warn "could not update $WORKFLOW_BASE in $WORKFLOW_REPO_DIR"
+else
+  git -C "$WORKFLOW_REPO_DIR" fetch -q origin "+$WORKFLOW_BASE:$WORKFLOW_BASE" || warn "could not fetch $WORKFLOW_BASE in $WORKFLOW_REPO_DIR"
+fi
 
 export CHANNEL_WORKSPACE AGENT_NAME WORKFLOW_PROJECT WORKFLOW_REPO WORKFLOW_CHANNEL WORKFLOW_APPROVERS
 export WORKFLOW_NAME="${WORKFLOW_NAME:-}" WORKFLOW_APPROVER_LABEL="${WORKFLOW_APPROVER_LABEL:-}"
@@ -54,6 +60,7 @@ export LORE_PROJECT="${LORE_PROJECT:-${LORE_CONTEXT#lore-}}"
 export LORE_ASSIGNEE="${LORE_ASSIGNEE:-$AGENT_NAME}"
 export LORE_HOLDER="${LORE_HOLDER:-enso:$(tr '[:upper:]' '[:lower:]' <<<"$AGENT_NAME")}"
 export LORE_MAX_NEW="${LORE_MAX_NEW:-1}"
+export WORKER_JOBS="${WORKER_JOBS:-}"   # stage jobs run by enso-worker (lib/worker.sh)
 
 python3 "$HERE/lib/configure_workflow.py"
 

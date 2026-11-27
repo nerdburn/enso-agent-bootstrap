@@ -148,8 +148,27 @@ def acquire(n: int):
             pass
 
 
+WORKER = os.path.join(HOME, ".local/bin/enso-worker")
+WORKER_JOBS = os.path.join(HOME, ".config/enso-agent/worker-jobs")  # written by lib/worker.sh
+
+
+def remote_job() -> bool:
+    """A stage job listed in worker-jobs runs in a Vercel Sandbox (enso-worker), not here."""
+    job = os.environ.get("ENSO_JOB")
+    if not job or not os.environ.get("ENSO_TASK") or not os.access(WORKER, os.X_OK):
+        return False
+    try:
+        with open(WORKER_JOBS) as fh:
+            return job in {line.strip() for line in fh if line.strip() and not line.startswith("#")}
+    except OSError:
+        return False
+
+
 def main() -> int:
     args = sys.argv[1:]
+    if {"-p", "--print"} & set(args) and remote_job():
+        # Its own cap (WORKER_MAX); a remote run uses no local slot.
+        os.execv(WORKER, [WORKER, "run", *args])
     n = max_runs()
     if n == 0 or not ({"-p", "--print"} & set(args)):
         os.execv(REAL, [REAL, *args])

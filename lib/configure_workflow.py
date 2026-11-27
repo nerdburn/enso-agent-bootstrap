@@ -100,6 +100,10 @@ def main() -> None:
     jobs_dir = ws_dir / "jobs"
     project_md = project_dir / "PROJECT.md"
 
+    # Build in a Vercel Sandbox (lib/worker.sh): its checks run there too, on the candidate,
+    # and this VM's worktrees need no dependencies installed.
+    remote_build = f"{workspace}:{prefix}-build" in os.environ.get("WORKER_JOBS", "").split()
+    worker = str(Path.home() / ".local/bin/enso-worker")
     checks = []
     for line in env("WORKFLOW_CHECKS").splitlines():
         line = line.strip()
@@ -108,7 +112,10 @@ def main() -> None:
         check, _, command = line.partition(":")
         if not command.strip():
             sys.exit(f"configure_workflow: WORKFLOW_CHECKS line {line!r} is not 'name: command'")
-        run = q('cd "$ENSO_TASK_DIR" && ' + command.strip())
+        if remote_build:
+            run = q(f"{worker} check -- bash -c {shlex.quote(command.strip())}")
+        else:
+            run = q('cd "$ENSO_TASK_DIR" && ' + command.strip())
         timeout = int(env("WORKFLOW_CHECK_TIMEOUT", "1200"))
         checks.append(f"  - name: {check.strip()}\n    command: {run}\n    timeout: {timeout}")
 
@@ -117,7 +124,7 @@ def main() -> None:
         "ENABLED": "true" if enabled(project_md) else "false",
         "REPO_DIR": q(repo_dir),
         "WORKFLOW_BASE": q(base),
-        "SETUP": q(f'cd "$ENSO_TASK_DIR" && {env("WORKFLOW_SETUP")}'),
+        "SETUP": q("true" if remote_build else f'cd "$ENSO_TASK_DIR" && {env("WORKFLOW_SETUP")}'),
         "WORKFLOW_MAX_CONCURRENCY": str(int(env("WORKFLOW_MAX_CONCURRENCY", "2"))),
         "BUILD_CHECKS": "\n".join(checks),
         "LORE_ASSIGNEE": assignee,
@@ -141,6 +148,7 @@ def main() -> None:
         "WORKFLOW_WIP_LIMIT": env("WORKFLOW_WIP_LIMIT", "3"),
         "WORKFLOW_REPO": env("WORKFLOW_REPO"),
         "WORKFLOW_BASE": base,
+        "WORKFLOW_REPO_DIR": repo_dir,
         "WORKFLOW_CHANNEL": env("WORKFLOW_CHANNEL"),
         "WORKFLOW_APPROVERS": " ".join(approvers),
         "WORKFLOW_AGENT": env("AGENT_NAME"),

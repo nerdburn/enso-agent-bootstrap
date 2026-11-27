@@ -156,6 +156,16 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # WORKFLOW_AGENT="claude/opus/high"        # stage agent; WORKFLOW_REVIEW_AGENT for review
 # WORKFLOW_CI_WAIT=2700          # seconds merge waits for CI before blocking
 # LORE_BRIDGE_REF="b91d02f"      # nerdburn/lore commit of integrations/enso/lore_bridge.py
+#
+# Remote workers (optional): run these stage jobs in Vercel Sandboxes (bin/enso-worker)
+# so builds and tests never load this VM. Build's checks then run in the sandbox too.
+# The Claude token goes in with `ssh -t <vm>.exe.xyz ~/.local/bin/worker-token`, not in this file.
+# WORKER_JOBS=""                 # e.g. "marble-collective:marble-build"
+# WORKER_SCOPE="inputlogic"      # Vercel team
+# WORKER_PROJECT="enso-workers"  # Vercel project that holds the sandboxes
+# WORKER_VCPUS=4                 # 2 GB of memory per vCPU
+# WORKER_MAX=5                   # sandboxes running turns at once from this VM
+# WORKER_TIMEOUT="2h"            # sandbox session limit
 
 # ── Machine ──────────────────────────────────────────────────────────────
 TIMEZONE="America/Vancouver"     # job schedules use the VM's local timezone

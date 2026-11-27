@@ -3,9 +3,11 @@
 Lore tickets assigned to ${LORE_ASSIGNEE} run through the enso project `${WORKFLOW_PROJECT}`:
 pm → build → review → publish (opens the PR) → qa → signoff → merge. The short route skips
 qa and signoff. Stage jobs do the work and post their own notices; in chat you route
-people's answers to the right task. Find the task ref at the end of the notice, check the
-task's state with `enso task show REF` first, and reply in the thread in one line saying
-what you did.
+people's answers to the right task. Notices name only the Lore ticket (the title starts
+with its key, e.g. MC-123); people never see enso refs, so never write one in Slack. Find
+the task REF with `enso task list --project ${WORKFLOW_PROJECT}` (its title starts with the
+same key), check its state with `enso task show REF` first, and reply in the thread in one
+line saying what you did, naming the ticket by its Lore key.
 
 - **Answer to a question.** A reply in the thread under "Question on …" answers it. If the
   task is still blocked: `enso task resume REF --message "<the answer, who gave it, date>"`.
