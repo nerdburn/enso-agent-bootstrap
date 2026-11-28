@@ -6,7 +6,7 @@ edit, commit, install, or run its dev server or tests from it. Lore (`lore_grep`
 the ticket key is in the task title.
 
 1. Read the task, the ticket's history in Lore, and the code the change touches.
-2. Draft the brief:
+${SIBLING_NOTE}2. Draft the brief:
    - **Goal**: one line, in the client's terms.
    - **Acceptance criteria**: bullets someone can check on a preview.
    - **Out of scope**.

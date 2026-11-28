@@ -6,7 +6,7 @@
 #   ./lore-bridge.sh transition   PROJECT.md after_transition hook
 #
 # dispatch admits new tickets only while fewer than WORKFLOW_WIP_LIMIT tasks are active.
-# Blocked tasks (waiting on a person) and backlog do not count, so unanswered questions do
+# Blocked and signoff tasks (waiting on a person) and backlog do not count, so unanswered questions do
 # not hold capacity.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,28 +107,47 @@ else:
         && echo "$ref: resumed ($why)" >&2 || true
     fi
   done
+  # Stage results recorded under an older workflow definition (an operator changed
+  # PROJECT.md) go stale, and enso then silently skips the task. Send it back to the first
+  # stale stage; the committed work carries over and is handed on again.
+  for ref in $("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
+      | python3 -c 'import json, sys
+print(" ".join(t["ref"] for t in json.load(sys.stdin)
+               if t.get("stage") not in ("backlog", "blocked", "done", "cancelled") and not t.get("claim_run_id")))'); do
+    shown="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" 2>/dev/null || true)"
+    grep -q "required work is missing or stale" <<<"$shown" || continue
+    route="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("route") or "full")')"
+    env -u ENSO_RUN_ID "$ENSO_BIN" workflow reroute "$ref" --workspace "$ENSO_WORKSPACE" --route "$route" \
+      --message "Resumed automatically: its earlier stage results went stale after a workflow settings change." >&2 \
+      && echo "$ref: rerouted (stale results)" >&2 || true
+  done
   active="$("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
     | python3 -c 'import json, sys
 tasks = json.load(sys.stdin)
-print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "done", "cancelled")))')"
+print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "signoff", "done", "cancelled")))')"
   room=$(( WORKFLOW_WIP_LIMIT - active ))
   (( room < 0 )) && room=0
   (( room < LORE_MAX_NEW )) && LORE_MAX_NEW=$room
   export LORE_MAX_NEW
+  # Choose the next ticket from Lore's goals (WORKFLOW_PICK=shadow|on; off by default).
+  python3 "$here/pick.py" >&2 || true
   # Remote workers: stop sandboxes whose task has moved on (best effort).
   if [ -x "$HOME/.local/bin/enso-worker" ] && [ -s "$HOME/.config/enso-agent/worker-jobs" ]; then
     "$HOME/.local/bin/enso-worker" sweep >&2 || true
   fi
 fi
 [ "$cmd" = dispatch ] || exec python3 "$here/lore_bridge.py" "$cmd"
-# A crash in dispatch repeats every tick: tell the operator in one line, once a day per
-# error, instead of a traceback alert every five minutes.
+# A crash in dispatch repeats every tick: tell the operator once a day per error, in one
+# plain sentence (the details stay in the job log), and never fail the job: a failed job
+# posts enso's own traceback alert.
 err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 if python3 "$here/lore_bridge.py" dispatch 2>"$err"; then exit 0; fi
 cat "$err" >&2
+mkdir -p "$here/state" 2>/dev/null || true
 last="$(grep -v '^\s' "$err" | tail -1)"; mark="$here/state/dispatch.error"
 stamp="$(date +%Y%m%d)-$(printf '%s' "$last" | cksum | cut -d' ' -f1)"
 if [ "$(cat "$mark" 2>/dev/null)" != "$stamp" ]; then
-  operator "*${WORKFLOW_NAME:-$ENSO_PROJECT} dispatch* failed: $(gist "${last:-see the job log}" 200)" && echo "$stamp" > "$mark"
+  operator "${WORKFLOW_NAME:-$ENSO_PROJECT}: I can't pick up tickets from Lore right now, so new work is on hold. I'm retrying every 5 minutes and will look into it." \
+    && { echo "$stamp" > "$mark" 2>/dev/null || true; }
 fi
 exit 0

@@ -22,7 +22,7 @@ from string import Template
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "workflow"
-SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh", "slack-upload.py", "refresh-branch.sh", "rules-review.sh")
+SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh", "slack-upload.py", "refresh-branch.sh", "rules-review.sh", "pick.py")
 # stage -> (timeout seconds, kind)
 STAGES = {
     "pm": (1800, "agent"),
@@ -91,6 +91,7 @@ def main() -> None:
     # approving on the approver's behalf): "Shawn (<@U…>), on Kristin's behalf".
     delegates = os.environ.get("WORKFLOW_DELEGATES", "").strip()
     signoff_label = f"{approver_label}, or {delegates}" if delegates else approver_label
+    sibling = os.environ.get("WORKFLOW_SIBLING_NOTE", "").strip()
     agent = env("WORKFLOW_AGENT_SPEC")
     review_agent = env("WORKFLOW_REVIEW_AGENT", agent)
     lore_project = env("LORE_PROJECT")
@@ -150,6 +151,10 @@ def main() -> None:
         "LORE_MAX_NEW": env("LORE_MAX_NEW", "1"),
         "LORE_STATUS_MAP": json.dumps({"pm": "in_progress", "publish": "review", "qa": "review", "signoff": "review", "merge": "review"}),
         "WORKFLOW_WIP_LIMIT": env("WORKFLOW_WIP_LIMIT", "3"),
+        "WORKFLOW_PICK": os.environ.get("WORKFLOW_PICK", "off") or "off",
+        "WORKFLOW_SETUP": os.environ.get("WORKFLOW_SETUP", ""),
+        "WORKFLOW_PICK_ROUTES": os.environ.get("WORKFLOW_PICK_ROUTES", ""),
+        "WORKFLOW_NAME": name,
         "WORKFLOW_REPO": env("WORKFLOW_REPO"),
         "WORKFLOW_BASE": base,
         "WORKFLOW_REPO_DIR": repo_dir,
@@ -174,6 +179,7 @@ def main() -> None:
         "WORKFLOW_BASE": base,
         "APPROVER_LABEL": approver_label,
         "JOB_PREFIX": prefix,
+        "SIBLING_NOTE": f"\n{sibling}\n" if sibling else "",
     }
     for stage, (timeout, kind) in STAGES.items():
         path = jobs_dir / f"{prefix}-{stage}" / "JOB.md"
@@ -230,9 +236,14 @@ def main() -> None:
         LORE_HOLDER=holder,
         LORE_PROJECT=lore_project,
     )
-    block = f"{MARK_START}\n{section.rstrip()}\n{MARK_END}\n"
+    # One marked section per project, so two projects can share a workspace. A section
+    # written before projects had their own markers is taken over by this project.
+    start, end = f"<!-- enso-agent-bootstrap:workflow:{key} -->", f"<!-- /enso-agent-bootstrap:workflow:{key} -->"
+    block = f"{start}\n{section.rstrip()}\n{end}\n"
     current = agents.read_text() if agents.exists() else ""
-    pattern = re.compile(re.escape(MARK_START) + r".*?" + re.escape(MARK_END) + r"\n?", re.S)
+    if start not in current and MARK_START in current:
+        current = current.replace(MARK_START, start, 1).replace(MARK_END, end, 1)
+    pattern = re.compile(re.escape(start) + r".*?" + re.escape(end) + r"\n?", re.S)
     updated = pattern.sub(lambda _: block, current) if pattern.search(current) else current.rstrip() + "\n\n" + block
     if write(agents, updated, 0o644):
         changed.append(agents)

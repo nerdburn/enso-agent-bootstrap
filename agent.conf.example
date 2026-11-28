@@ -152,6 +152,7 @@ LORE_REMOTE="exedev@lore-host.exe.xyz:/srv/lore/repos"
 # WORKFLOW_APPROVER_LABEL=""     # how prompts name them, e.g. "Kristin (<@U…>)"
 # WORKFLOW_DELEGATES=""          # also may sign off, not mentioned: "Shawn (<@U…>), on Kristin's behalf"
 # LORE_ASSIGNEE=""               # Lore assignee whose tickets are admitted (default AGENT_NAME)
+# WORKFLOW_PICK=off              # shadow: tell the operator what it would pick; on: pick from Lore goals
 # WORKFLOW_WIP_LIMIT=3           # active tasks before dispatch stops admitting
 # WORKFLOW_MAX_CONCURRENCY=2     # enso stage runs at once for the project
 # WORKFLOW_AGENT="claude/opus/high"        # stage agent; WORKFLOW_REVIEW_AGENT for review

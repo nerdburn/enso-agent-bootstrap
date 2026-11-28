@@ -40,7 +40,9 @@ umask 077
   if [ -n "$vtoken" ]; then echo "VERCEL_AUTH_TOKEN=$vtoken"; fi
 } > "$ENVF.tmp"
 mv "$ENVF.tmp" "$ENVF"
-tr ' ' '\n' <<<"$WORKER_JOBS" | sed '/^$/d' > "$DIR/worker-jobs"
+# Merge: several projects on one VM each install their own remote jobs.
+{ cat "$DIR/worker-jobs" 2>/dev/null || true; tr ' ' '\n' <<<"$WORKER_JOBS"; } | sed '/^$/d' | sort -u > "$DIR/worker-jobs.tmp"
+mv "$DIR/worker-jobs.tmp" "$DIR/worker-jobs"
 info "✓ enso-worker: $(tr '\n' ' ' < "$DIR/worker-jobs")→ Vercel $WORKER_SCOPE/$WORKER_PROJECT"
 
 [ -n "$token" ] || warn "no Claude token for workers yet: ssh -t <vm>.exe.xyz ~/.local/bin/worker-token claude"

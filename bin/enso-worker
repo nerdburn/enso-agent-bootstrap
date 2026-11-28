@@ -243,6 +243,20 @@ def turn_done(name: str, turn: int) -> bool:
     return sh(name, f"test -f {RUN}/turn-{turn}/done", check=False).returncode == 0
 
 
+def project_setup(worktree: str) -> str:
+    """WORKFLOW_SETUP from the task's project (…/projects/<KEY>/.worktrees/<REF>): projects
+    on one VM can need different setups (npm ci for web, pip for an API)."""
+    env = Path(worktree).resolve().parent.parent / "workflow.env"
+    try:
+        for line in env.read_text().splitlines():
+            if line.startswith(("export WORKFLOW_SETUP=", "WORKFLOW_SETUP=")):
+                value = shlex.split(line.split("=", 1)[1])
+                return value[0] if value else ""
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
 def create(name: str, task: str, stage: str, run_id: str, worktree: str) -> None:
     head = git(worktree, "rev-parse", "HEAD")
     branch = git(worktree, "branch", "--show-current") or f"enso/{task}"
@@ -264,7 +278,7 @@ def create(name: str, task: str, stage: str, run_id: str, worktree: str) -> None
         (t / "claude-token").write_text(CFG.get("CLAUDE_WORKER_TOKEN", ""))
         (t / "repo.env").write_text("".join(f"{k}={shlex.quote(v)}\n" for k, v in {
             "REPO_URL": repo_url, "BRANCH": branch, "START": head, "TASK_DIR": worktree,
-            "SETUP": CFG["WORKER_SETUP"],
+            "SETUP": project_setup(worktree) or CFG["WORKER_SETUP"],
             "GIT_NAME": git(worktree, "config", "user.name", check=False) or "enso worker",
             "GIT_EMAIL": git(worktree, "config", "user.email", check=False) or "enso-worker@users.noreply.github.com",
         }.items()))
