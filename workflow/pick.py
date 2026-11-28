@@ -96,8 +96,23 @@ QUESTIONS = {
 }
 
 
+def typesafe_key() -> str:
+    """From the environment, else the agent's env file (read at service start only)."""
+    if os.environ.get("TYPESAFE_API_KEY"):
+        return os.environ["TYPESAFE_API_KEY"]
+    env = Path.home() / ".config" / "enso-agent" / "env"
+    try:
+        for line in env.read_text().splitlines():
+            line = line.strip().removeprefix("export ")
+            if line.startswith("TYPESAFE_API_KEY="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    return ""
+
+
 def screen(t: dict) -> dict | None:
-    key = os.environ.get("TYPESAFE_API_KEY")
+    key = typesafe_key()
     if not key:
         return None
     state = {

@@ -6,7 +6,7 @@
 #   ./lore-bridge.sh transition   PROJECT.md after_transition hook
 #
 # dispatch admits new tickets only while fewer than WORKFLOW_WIP_LIMIT tasks are active.
-# Blocked tasks (waiting on a person) and backlog do not count, so unanswered questions do
+# Blocked and signoff tasks (waiting on a person) and backlog do not count, so unanswered questions do
 # not hold capacity.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,7 +124,7 @@ print(" ".join(t["ref"] for t in json.load(sys.stdin)
   active="$("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
     | python3 -c 'import json, sys
 tasks = json.load(sys.stdin)
-print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "done", "cancelled")))')"
+print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "signoff", "done", "cancelled")))')"
   room=$(( WORKFLOW_WIP_LIMIT - active ))
   (( room < 0 )) && room=0
   (( room < LORE_MAX_NEW )) && LORE_MAX_NEW=$room
