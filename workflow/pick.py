@@ -165,6 +165,18 @@ def screen(t: dict) -> dict | None:
     return out
 
 
+def waiting_on_people() -> int:
+    """This project's tasks waiting on a person: blocked (questions, approvals) or at signoff."""
+    enso = os.environ.get("ENSO_BIN", "enso")
+    out = subprocess.run([enso, "task", "list", "--project", os.environ.get("ENSO_PROJECT", ""),
+                          "--workspace", os.environ.get("ENSO_WORKSPACE", ""), "--json"],
+                         capture_output=True, text=True, timeout=60)
+    try:
+        return sum(1 for t in json.loads(out.stdout or "[]") if t.get("stage") in ("blocked", "signoff"))
+    except ValueError:
+        return 99  # unknown: do not pick
+
+
 def operator(text: str) -> None:
     enso = os.environ.get("ENSO_BIN", "enso")
     subprocess.run([enso, "message", "send", "-", "--workspace", os.environ.get("ENSO_WORKSPACE", "")],
@@ -175,6 +187,10 @@ def main() -> int:
     if MODE not in ("shadow", "on") or not PROJECT or not ASSIGNEE:
         return 0
     if int(os.environ.get("LORE_MAX_NEW", "0") or 0) <= 0:
+        return 0
+    # Every question a new ticket raises waits on the same people; a ticket blocked on one
+    # frees WIP room, so without this cap the agent keeps picking and keeps asking.
+    if waiting_on_people() >= int(os.environ.get("WORKFLOW_PICK_WAITING_MAX", "3") or 3):
         return 0
     cands, mine_waiting = candidates()
     if mine_waiting or not cands:

@@ -151,6 +151,10 @@ def main() -> None:
         "LORE_MAX_NEW": env("LORE_MAX_NEW", "1"),
         "LORE_STATUS_MAP": json.dumps({"pm": "in_progress", "publish": "review", "qa": "review", "signoff": "review", "merge": "review"}),
         "WORKFLOW_WIP_LIMIT": env("WORKFLOW_WIP_LIMIT", "3"),
+        # Lore's own dispatch guard counts every in-flight ticket assigned to the agent,
+        # chat work included; the WIP limit and pick.py's waiting cap govern load instead.
+        "LORE_MAX_IN_FLIGHT": os.environ.get("LORE_MAX_IN_FLIGHT", "50") or "50",
+        "WORKFLOW_PICK_WAITING_MAX": os.environ.get("WORKFLOW_PICK_WAITING_MAX", "3") or "3",
         "WORKFLOW_PICK": os.environ.get("WORKFLOW_PICK", "off") or "off",
         "WORKFLOW_SETUP": os.environ.get("WORKFLOW_SETUP", ""),
         "WORKFLOW_PICK_ROUTES": os.environ.get("WORKFLOW_PICK_ROUTES", ""),
