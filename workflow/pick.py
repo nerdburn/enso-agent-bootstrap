@@ -37,6 +37,11 @@ ASSIGNEE = os.environ.get("LORE_ASSIGNEE", "")
 CURRENT = {"planned", "in_progress", "active", "open"}
 PRIORITY = {"P1": 0, "P2": 1, "P3": 2}
 SCREEN = int(os.environ.get("WORKFLOW_PICK_SCREEN", "10"))
+# Two projects on one tracker (an app's web and API repos): {"web": {"assignee": "…",
+# "about": "what lives in that repo"}, "api": {…}, "both": "api"}. Jev routes each pick;
+# a ticket needing both goes to the "both" project, whose PM adds a ticket for the other.
+ROUTES = json.loads(os.environ.get("WORKFLOW_PICK_ROUTES") or "{}")
+ASSIGNEES = {r["assignee"].lower() for k, r in ROUTES.items() if isinstance(r, dict)} or {ASSIGNEE.lower()}
 
 
 def lore(*args: str):
@@ -60,7 +65,7 @@ GOALS: list[dict] = []
 def candidates() -> tuple[list[dict], bool]:
     tickets = lore("work", "list", "--json")
     mine_waiting = any(
-        t.get("status") == "todo" and not t.get("claim") and str(t.get("assignee") or "").lower() == ASSIGNEE.lower()
+        t.get("status") == "todo" and not t.get("claim") and str(t.get("assignee") or "").lower() in ASSIGNEES
         for t in tickets
     )
     support: dict[str, dict] = {}
@@ -138,12 +143,21 @@ def screen(t: dict) -> dict | None:
             "instructions": "Would finishing `ticket` clearly move one of the project's current `goals` forward, rather than being unrelated housekeeping?",
             "criteria": {"true": "Clearly advances a listed goal", "false": "Unrelated to the listed goals, or only marginal"},
         }
+    routes = {k: r for k, r in ROUTES.items() if isinstance(r, dict)}
+    if routes:
+        criteria = {k: f"Only the {k} repository: {r.get('about', k)}" for k, r in routes.items()}
+        criteria["both"] = "Needs changes in more than one of these repositories"
+        questions["repo"] = {"type": "choice", "instructions": "Which code repository does `ticket` need changed?",
+                             "criteria": criteria}
     body = json.dumps({"model": os.environ.get("JEV_MODEL", "jev-latest"), "state": state, "questions": questions}).encode()
     req = urllib.request.Request("https://api.typesafe.ai/v1/systemone", data=body, method="POST",
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         answers = json.load(resp).get("answers", {})
-    return {k: float((answers.get(k) or {}).get("noul", 0.0)) for k in questions}
+    out = {k: float((answers.get(k) or {}).get("noul", 0.0)) for k, q in questions.items() if q["type"] == "noul"}
+    if "repo" in questions:
+        out["repo"] = (answers.get("repo") or {}).get("choice") or "both"
+    return out
 
 
 def operator(text: str) -> None:
@@ -193,7 +207,15 @@ def main() -> int:
             mark.write_text(stamp)
         print(f"pick (shadow): {pick['key']}")
         return 0
-    subprocess.run(["lore", "work", "set", pick["key"], "-p", PROJECT, "--assignee", ASSIGNEE,
+    target = ASSIGNEE
+    if ROUTES and verdict and verdict.get("repo"):
+        route = verdict["repo"]
+        if route == "both":
+            route = ROUTES.get("both", next(k for k, r in ROUTES.items() if isinstance(r, dict)))
+            ui += "; needs more than one repo, so its brief adds a ticket for the other part"
+        target = ROUTES[route]["assignee"]
+        why += f"; {route} repo"
+    subprocess.run(["lore", "work", "set", pick["key"], "-p", PROJECT, "--assignee", target,
                     "--reason", f"Picked by the agent: {why}{ui}", "--by", os.environ.get("LORE_HOLDER", "enso")],
                    check=True, capture_output=True, text=True, timeout=120)
     print(f"picked {pick['key']}: {why}")
