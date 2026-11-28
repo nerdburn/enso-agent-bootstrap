@@ -22,7 +22,7 @@ from string import Template
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "workflow"
-SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh", "slack-upload.py", "refresh-branch.sh", "rules-review.sh")
+SCRIPTS = ("common.sh", "stage_output.py", "lore-bridge.sh", "notify.sh", "publish-pr.sh", "merge-pr.sh", "slack-upload.py", "refresh-branch.sh", "rules-review.sh", "pick.py")
 # stage -> (timeout seconds, kind)
 STAGES = {
     "pm": (1800, "agent"),
@@ -150,6 +150,7 @@ def main() -> None:
         "LORE_MAX_NEW": env("LORE_MAX_NEW", "1"),
         "LORE_STATUS_MAP": json.dumps({"pm": "in_progress", "publish": "review", "qa": "review", "signoff": "review", "merge": "review"}),
         "WORKFLOW_WIP_LIMIT": env("WORKFLOW_WIP_LIMIT", "3"),
+        "WORKFLOW_PICK": os.environ.get("WORKFLOW_PICK", "off") or "off",
         "WORKFLOW_REPO": env("WORKFLOW_REPO"),
         "WORKFLOW_BASE": base,
         "WORKFLOW_REPO_DIR": repo_dir,

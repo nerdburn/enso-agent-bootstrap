@@ -115,6 +115,8 @@ print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "done
   (( room < 0 )) && room=0
   (( room < LORE_MAX_NEW )) && LORE_MAX_NEW=$room
   export LORE_MAX_NEW
+  # Choose the next ticket from Lore's goals (WORKFLOW_PICK=shadow|on; off by default).
+  python3 "$here/pick.py" >&2 || true
   # Remote workers: stop sandboxes whose task has moved on (best effort).
   if [ -x "$HOME/.local/bin/enso-worker" ] && [ -s "$HOME/.config/enso-agent/worker-jobs" ]; then
     "$HOME/.local/bin/enso-worker" sweep >&2 || true
