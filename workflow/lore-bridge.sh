@@ -107,6 +107,20 @@ else:
         && echo "$ref: resumed ($why)" >&2 || true
     fi
   done
+  # Stage results recorded under an older workflow definition (an operator changed
+  # PROJECT.md) go stale, and enso then silently skips the task. Send it back to the first
+  # stale stage; the committed work carries over and is handed on again.
+  for ref in $("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
+      | python3 -c 'import json, sys
+print(" ".join(t["ref"] for t in json.load(sys.stdin)
+               if t.get("stage") not in ("backlog", "blocked", "done", "cancelled") and not t.get("claim_run_id")))'); do
+    shown="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" 2>/dev/null || true)"
+    grep -q "required work is missing or stale" <<<"$shown" || continue
+    route="$("$ENSO_BIN" task show "$ref" --workspace "$ENSO_WORKSPACE" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("route") or "full")')"
+    env -u ENSO_RUN_ID "$ENSO_BIN" workflow reroute "$ref" --workspace "$ENSO_WORKSPACE" --route "$route" \
+      --message "Resumed automatically: its earlier stage results went stale after a workflow settings change." >&2 \
+      && echo "$ref: rerouted (stale results)" >&2 || true
+  done
   active="$("$ENSO_BIN" task list --project "$ENSO_PROJECT" --workspace "$ENSO_WORKSPACE" --json \
     | python3 -c 'import json, sys
 tasks = json.load(sys.stdin)
