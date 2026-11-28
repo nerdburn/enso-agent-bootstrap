@@ -36,7 +36,7 @@ PROJECT = os.environ.get("LORE_PROJECT", "")
 ASSIGNEE = os.environ.get("LORE_ASSIGNEE", "")
 CURRENT = {"planned", "in_progress", "active", "open"}
 PRIORITY = {"P1": 0, "P2": 1, "P3": 2}
-SCREEN = int(os.environ.get("WORKFLOW_PICK_SCREEN", "6"))
+SCREEN = int(os.environ.get("WORKFLOW_PICK_SCREEN", "10"))
 
 
 def lore(*args: str):
@@ -54,6 +54,9 @@ def goals() -> list[dict]:
     return [g for g in found or [] if str(g.get("status", "planned")) in CURRENT and g.get("kind", "goal") == "goal"]
 
 
+GOALS: list[dict] = []
+
+
 def candidates() -> tuple[list[dict], bool]:
     tickets = lore("work", "list", "--json")
     mine_waiting = any(
@@ -61,20 +64,26 @@ def candidates() -> tuple[list[dict], bool]:
         for t in tickets
     )
     support: dict[str, dict] = {}
-    for g in goals():
+    GOALS[:] = goals()
+    for g in GOALS:
         for key in g.get("work_items") or []:
             best = support.get(key)
             rank = (PRIORITY.get(g.get("priority"), 3), 0 if g.get("horizon") == "short_term" else 1)
             if best is None or rank < best["_rank"]:
                 support[key] = {**g, "_rank": rank}
-    out = []
+    out, loose = [], []
     for i, t in enumerate(tickets):
         labels = [str(x).lower() for x in t.get("labels") or []]
-        if (t.get("status") == "todo" and not t.get("claim") and not t.get("assignee")
-                and t.get("key") in support and "no-agent" not in labels):
+        if t.get("status") != "todo" or t.get("claim") or t.get("assignee") or "no-agent" in labels:
+            continue
+        if t.get("key") in support:
             g = support[t["key"]]
             out.append({**t, "goal": g, "_order": (*g["_rank"], i)})
-    return sorted(out, key=lambda t: t["_order"]), mine_waiting
+        else:
+            loose.append({**t, "goal": None, "_order": (9, 9, i)})
+    # Goal-linked tickets first; then the rest of the ranked backlog, which Jev must
+    # judge to advance one of the current goals.
+    return sorted(out, key=lambda t: t["_order"]) + loose, mine_waiting
 
 
 QUESTIONS = {
@@ -118,14 +127,23 @@ def screen(t: dict) -> dict | None:
     state = {
         "ticket": {"key": t["key"], "title": t.get("title", ""), "labels": t.get("labels") or [],
                    "description": str(t.get("description") or "")[:3000]},
-        "goal": {"outcome": t["goal"].get("item", ""), "why": t["goal"].get("why", "")},
     }
-    body = json.dumps({"model": os.environ.get("JEV_MODEL", "jev-latest"), "state": state, "questions": QUESTIONS}).encode()
+    questions = dict(QUESTIONS)
+    if t["goal"]:
+        state["goal"] = {"outcome": t["goal"].get("item", ""), "why": t["goal"].get("why", "")}
+    else:
+        state["goals"] = [str(g.get("item", ""))[:300] for g in GOALS[:15]]
+        questions["goal_fit"] = {
+            "type": "noul",
+            "instructions": "Would finishing `ticket` clearly move one of the project's current `goals` forward, rather than being unrelated housekeeping?",
+            "criteria": {"true": "Clearly advances a listed goal", "false": "Unrelated to the listed goals, or only marginal"},
+        }
+    body = json.dumps({"model": os.environ.get("JEV_MODEL", "jev-latest"), "state": state, "questions": questions}).encode()
     req = urllib.request.Request("https://api.typesafe.ai/v1/systemone", data=body, method="POST",
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         answers = json.load(resp).get("answers", {})
-    return {k: float((answers.get(k) or {}).get("noul", 0.0)) for k in QUESTIONS}
+    return {k: float((answers.get(k) or {}).get("noul", 0.0)) for k in questions}
 
 
 def operator(text: str) -> None:
@@ -145,14 +163,21 @@ def main() -> int:
     pick, verdict, skipped = None, None, []
     for t in cands[:SCREEN]:
         v = screen(t)
-        if v is None or (v["agent_work"] >= 0.6 and v["ready"] >= 0.5):
+        if v is None and t["goal"] is None:
+            continue  # without Jev, only goal-linked tickets are picked
+        if v is None or (v["agent_work"] >= 0.6 and v["ready"] >= 0.5 and v.get("goal_fit", 1.0) >= 0.6):
             pick, verdict = t, v
             break
-        skipped.append(f"{t['key']} ({'not agent work' if v['agent_work'] < 0.6 else 'needs a client decision'})")
+        why_not = ("not agent work" if v["agent_work"] < 0.6 else "needs a client decision" if v["ready"] < 0.5
+                   else "not tied to a current goal")
+        skipped.append(f"{t['key']} ({why_not})")
     if pick is None:
         return 0
     goal = pick["goal"]
-    why = f"supports “{str(goal.get('item', ''))[:90]}” ({goal.get('priority', '?')}, {str(goal.get('horizon', '')).replace('_', ' ')})"
+    if goal:
+        why = f"supports “{str(goal.get('item', ''))[:90]}” ({goal.get('priority', '?')}, {str(goal.get('horizon', '')).replace('_', ' ')})"
+    else:
+        why = "next in Lore's backlog that advances a current goal (Jev)"
     ui = "" if verdict is None else ("; new UI, so designs first" if verdict["new_ui"] >= 0.5 else "")
     line = f"*{pick['key']}* {pick.get('title', '')[:80]}: {why}{ui}"
     if os.environ.get("PICK_DRY"):
