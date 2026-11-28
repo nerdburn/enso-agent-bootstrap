@@ -138,6 +138,11 @@ def screen(t: dict) -> dict | None:
         state["goal"] = {"outcome": t["goal"].get("item", ""), "why": t["goal"].get("why", "")}
     else:
         state["goals"] = [str(g.get("item", ""))[:300] for g in GOALS[:15]]
+        questions["defect"] = {
+            "type": "noul",
+            "instructions": "Is `ticket` a defect in existing behaviour that users or the client run into (something broken, wrong or missing that should already work), rather than new work or a nice-to-have?",
+            "criteria": {"true": "A real bug or regression people hit", "false": "New work, a request, or not a defect"},
+        }
         questions["goal_fit"] = {
             "type": "noul",
             "instructions": "Would finishing `ticket` clearly move one of the project's current `goals` forward, rather than being unrelated housekeeping?",
@@ -179,7 +184,8 @@ def main() -> int:
         v = screen(t)
         if v is None and t["goal"] is None:
             continue  # without Jev, only goal-linked tickets are picked
-        if v is None or (v["agent_work"] >= 0.6 and v["ready"] >= 0.5 and v.get("goal_fit", 1.0) >= 0.6):
+        fits = v is not None and (v.get("goal_fit", 1.0) >= 0.6 or v.get("defect", 0.0) >= 0.7)  # bugs get fixed regardless
+        if v is None or (v["agent_work"] >= 0.6 and v["ready"] >= 0.5 and fits):
             pick, verdict = t, v
             break
         why_not = ("not agent work" if v["agent_work"] < 0.6 else "needs a client decision" if v["ready"] < 0.5
@@ -191,7 +197,8 @@ def main() -> int:
     if goal:
         why = f"supports “{str(goal.get('item', ''))[:90]}” ({goal.get('priority', '?')}, {str(goal.get('horizon', '')).replace('_', ' ')})"
     else:
-        why = "next in Lore's backlog that advances a current goal (Jev)"
+        why = ("a user-facing bug, next in Lore's backlog" if verdict and verdict.get("defect", 0) >= 0.7
+               and verdict.get("goal_fit", 0) < 0.6 else "next in Lore's backlog that advances a current goal (Jev)")
     ui = "" if verdict is None else ("; new UI, so designs first" if verdict["new_ui"] >= 0.5 else "")
     line = f"*{pick['key']}* {pick.get('title', '')[:80]}: {why}{ui}"
     if os.environ.get("PICK_DRY"):
