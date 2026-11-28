@@ -151,6 +151,7 @@ def main() -> None:
         "LORE_STATUS_MAP": json.dumps({"pm": "in_progress", "publish": "review", "qa": "review", "signoff": "review", "merge": "review"}),
         "WORKFLOW_WIP_LIMIT": env("WORKFLOW_WIP_LIMIT", "3"),
         "WORKFLOW_PICK": os.environ.get("WORKFLOW_PICK", "off") or "off",
+        "WORKFLOW_NAME": name,
         "WORKFLOW_REPO": env("WORKFLOW_REPO"),
         "WORKFLOW_BASE": base,
         "WORKFLOW_REPO_DIR": repo_dir,

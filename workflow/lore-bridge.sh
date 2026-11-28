@@ -123,14 +123,17 @@ print(sum(1 for t in tasks if t.get("stage") not in ("backlog", "blocked", "done
   fi
 fi
 [ "$cmd" = dispatch ] || exec python3 "$here/lore_bridge.py" "$cmd"
-# A crash in dispatch repeats every tick: tell the operator in one line, once a day per
-# error, instead of a traceback alert every five minutes.
+# A crash in dispatch repeats every tick: tell the operator once a day per error, in one
+# plain sentence (the details stay in the job log), and never fail the job: a failed job
+# posts enso's own traceback alert.
 err="$(mktemp)"; trap 'rm -f "$err"' EXIT
 if python3 "$here/lore_bridge.py" dispatch 2>"$err"; then exit 0; fi
 cat "$err" >&2
+mkdir -p "$here/state" 2>/dev/null || true
 last="$(grep -v '^\s' "$err" | tail -1)"; mark="$here/state/dispatch.error"
 stamp="$(date +%Y%m%d)-$(printf '%s' "$last" | cksum | cut -d' ' -f1)"
 if [ "$(cat "$mark" 2>/dev/null)" != "$stamp" ]; then
-  operator "*${WORKFLOW_NAME:-$ENSO_PROJECT} dispatch* failed: $(gist "${last:-see the job log}" 200)" && echo "$stamp" > "$mark"
+  operator "${WORKFLOW_NAME:-$ENSO_PROJECT}: I can't pick up tickets from Lore right now, so new work is on hold. I'm retrying every 5 minutes and will look into it." \
+    && { echo "$stamp" > "$mark" 2>/dev/null || true; }
 fi
 exit 0
